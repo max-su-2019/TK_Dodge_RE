@@ -1,6 +1,5 @@
 #include "LoadGame.h"
 #include "DataHandler.h"
-#include "Hooks.h"
 #include "SimpleIni.h"
 #include "InputEvents.h"
 #include "AnimationEvents.h"
@@ -28,7 +27,6 @@ namespace TKDodge
 		}
 
 		InputEventHandler::Register();
-		IsGhostHook::InstallHook();
 		InitScriptHandler::RegisterEvent();
 	}
 

@@ -41,9 +41,6 @@
     <ClInclude Include="src\DataHandler.h">
       <Filter>src</Filter>
     </ClInclude>
-    <ClInclude Include="src\Hooks.h">
-      <Filter>src</Filter>
-    </ClInclude>
     <ClInclude Include="src\AnimationEvents.h">
       <Filter>src</Filter>
     </ClInclude>

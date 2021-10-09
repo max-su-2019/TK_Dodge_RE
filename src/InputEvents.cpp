@@ -120,7 +120,7 @@ namespace TKDodge
 					}
 
 					playerCharacter->SetGraphVariableInt("iStep", datahandler->settings->istepDodge);
-					playerCharacter->SetGraphVariableFloat("TKDR_IframeDuration", 0.3f);
+					playerCharacter->SetGraphVariableFloat("TKDR_IframeDuration", datahandler->settings->iFrameDuration);
 					playerCharacter->NotifyAnimationGraph(dodge_event);
 					return EventResult::kContinue;
 				} else

@@ -238,7 +238,6 @@
     <ClInclude Include="src\AnimationEvents.h" />
     <ClInclude Include="src\DataHandler.h" />
     <ClInclude Include="src\InputEvents.h" />
-    <ClInclude Include="src\Hooks.h" />
     <ClInclude Include="src\LoadGame.h" />
     <ClInclude Include="src\PCH.h" />
     <ClInclude Include="src\version.h" />
