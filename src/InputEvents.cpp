@@ -102,6 +102,7 @@ namespace TKDodge
 				break;
 			case DeviceType::kGamepad:
 				key = GetGamepadIndex((RE::BSWin32GamepadDevice::Key)key);
+				break;
 			default:
 				continue;
 			}
@@ -119,9 +120,10 @@ namespace TKDodge
 						return EventResult::kContinue;
 					}
 
-					playerCharacter->SetGraphVariableInt("iStep", datahandler->settings->istepDodge);
-					playerCharacter->SetGraphVariableFloat("TKDR_IframeDuration", datahandler->settings->iFrameDuration);
-					playerCharacter->NotifyAnimationGraph(dodge_event);
+					playerCharacter->SetGraphVariableInt("iStep", datahandler->settings->istepDodge);		//Set Step Dodge
+					playerCharacter->SetGraphVariableFloat("TKDR_IframeDuration", datahandler->settings->iFrameDuration);	//Set invulnerable frame duration
+					PlayerAnimationHandler::RegisterSink(playerCharacter);		//Register event sink
+					playerCharacter->NotifyAnimationGraph(dodge_event);		//Send TK Dodge Event
 					return EventResult::kContinue;
 				} else
 					logger::debug("No Dodge Event Get!");

@@ -2,7 +2,6 @@
 #include "DataHandler.h"
 #include "SimpleIni.h"
 #include "InputEvents.h"
-#include "AnimationEvents.h"
 
 namespace TKDodge
 {
@@ -27,7 +26,6 @@ namespace TKDodge
 		}
 
 		InputEventHandler::Register();
-		InitScriptHandler::RegisterEvent();
 	}
 
 	void EventCallback(SKSE::MessagingInterface::Message* msg)

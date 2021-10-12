@@ -4,45 +4,44 @@ namespace TKDodge
 {
 	class DataHandler
 	{
-
-	struct MovDires
-	{
-		enum MovDire : std::uint32_t
+		struct MovDires
 		{
-			kNone = 0,
-			kForward,
-			kRight,
-			kBackward,
-			kLeft,
+			enum MovDire : std::uint32_t
+			{
+				kNone = 0,
+				kForward,
+				kRight,
+				kBackward,
+				kLeft,
+			};
 		};
-	};
-	using MovDire = MovDires::MovDire;
-	using DirePair = std::pair<MovDire, std::string_view>;
+		using MovDire = MovDires::MovDire;
+		using DirePair = std::pair<MovDire, std::string_view>;
 
-	struct INIData
-	{
-		INIData() = delete;
-
-		INIData(const INIData&) = delete;
-
-		INIData(INIData&&) = delete;
-
-		INIData& operator=(const INIData&) = delete;
-
-		INIData& operator=(INIData&&) = delete;
-
-		explicit INIData(std::uint32_t a_dodgeKey, float a_padThld, std::int32_t a_istepDodge, float a_dodgestamina, float a_iFrameDuration) :
-			dodgeKey(a_dodgeKey), padThld(a_padThld), istepDodge(a_istepDodge), dodgeStamina(a_dodgestamina), iFrameDuration(a_iFrameDuration)
+		struct INIData
 		{
-			logger::info(FMT_STRING("Set Dodge Hotkey to {}, GamePad Threshold to {}, Step Dodge to {}, Dodge Stamina to {}, iFrame Duration to {}"), dodgeKey, padThld, istepDodge, dodgeStamina, a_iFrameDuration);
-		};
+			INIData() = delete;
+
+			INIData(const INIData&) = delete;
+
+			INIData(INIData&&) = delete;
+
+			INIData& operator=(const INIData&) = delete;
+
+			INIData& operator=(INIData&&) = delete;
+
+			explicit INIData(std::uint32_t a_dodgeKey, float a_padThld, std::int32_t a_istepDodge, float a_dodgestamina, float a_iFrameDuration) :
+				dodgeKey(a_dodgeKey), padThld(a_padThld), istepDodge(a_istepDodge), dodgeStamina(a_dodgestamina), iFrameDuration(a_iFrameDuration)
+			{
+				logger::info(FMT_STRING("Set Dodge Hotkey to {}, GamePad Threshold to {}, Step Dodge to {}, Dodge Stamina to {}, iFrame Duration to {}"), dodgeKey, padThld, istepDodge, dodgeStamina, a_iFrameDuration);
+			};
 		
-		const std::uint32_t		dodgeKey;
-		const float				padThld;
-		const std::int32_t		istepDodge;
-		const float				dodgeStamina;
-		const float				iFrameDuration;
-	};
+			const std::uint32_t		dodgeKey;
+			const float				padThld;
+			const std::int32_t		istepDodge;
+			const float				dodgeStamina;
+			const float				iFrameDuration;
+		};
 
 	public:
 		static DataHandler* GetSingleton()

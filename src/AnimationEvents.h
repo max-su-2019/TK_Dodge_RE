@@ -38,49 +38,4 @@ namespace TKDodge
 		~PlayerAnimationHandler() = default;
 	};
 
-
-	class InitScriptHandler : public RE::BSTEventSink<RE::TESInitScriptEvent>
-	{
-	public:
-		virtual EventResult ProcessEvent(const RE::TESInitScriptEvent* a_event, RE::BSTEventSource<RE::TESInitScriptEvent>*)
-		{
-			if (a_event && a_event->objectInitialized && a_event->objectInitialized->IsPlayerRef() && a_event->objectInitialized->As<RE::Actor>()) {
-				PlayerAnimationHandler::RegisterSink(a_event->objectInitialized->As<RE::Actor>());
-			}
-
-			return EventResult::kContinue;
-		}
-
-		static bool RegisterEvent()
-		{
-			static InitScriptHandler eventhandler;
-
-			auto ScriptEventSource = RE::ScriptEventSourceHolder::GetSingleton();
-
-			if (!ScriptEventSource) {
-				logger::error("ScriptEventSource not found!");
-				return false;
-			}
-
-			ScriptEventSource->AddEventSink(&eventhandler);
-
-			logger::info("Register InitScript Handler!");
-
-			return true;
-		}
-
-
-	private:
-		InitScriptHandler() = default;
-
-		~InitScriptHandler() = default;
-
-		InitScriptHandler(const InitScriptHandler&) = delete;
-
-		InitScriptHandler(InitScriptHandler&&) = delete;
-
-		InitScriptHandler& operator=(const InitScriptHandler&) = delete;
-
-		InitScriptHandler& operator=(InitScriptHandler&&) = delete;
-	};
 }
