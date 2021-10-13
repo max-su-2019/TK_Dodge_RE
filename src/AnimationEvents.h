@@ -27,7 +27,7 @@ namespace TKDodge
 
 			graphMgr->graphs.cbegin()->get()->AddEventSink(&g_eventhandler);
 
-			logger::info("Register Animation Event Handler!");
+			logger::debug("Register Animation Event Handler!");
 
 			return true;
 		}

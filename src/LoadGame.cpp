@@ -13,10 +13,17 @@ namespace TKDodge
 		SI_Error rc = ini.LoadFile(SETTINGFILE_PATH);
 
 		std::uint32_t dodgeKey = ini.GetLongValue("Main", "DodgeHotkey", 42);
+
 		float padThld = ini.GetDoubleValue("Main", "GamePadThreshold", 0.15f);
-		std::int32_t stepDodge = ini.GetLongValue("Main", "StepDodge");
+
+		std::int32_t stepDodge = ini.GetBoolValue("Main", "StepDodge");
+		stepDodge ? stepDodge = 2 : stepDodge = 0;
+
 		float dodgeStamina = ini.GetDoubleValue("Main", "DodgeStamina", 10.f);
+		if (dodgeStamina < 0.f) { dodgeStamina = 0.f;}
+
 		float iFrameDuration = ini.GetDoubleValue("Main", "iFrameDuration", 0.3f);
+		if (iFrameDuration < 0.f) { iFrameDuration = 0.f;}
 
 		settings = std::make_unique<INIData>(dodgeKey, padThld, stepDodge, dodgeStamina, iFrameDuration);
 
