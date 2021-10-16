@@ -14,6 +14,8 @@ namespace TKDodge
 
 		std::uint32_t dodgeKey = ini.GetLongValue("Main", "DodgeHotkey", 42);
 
+		bool enableTappingDodge = ini.GetBoolValue("Main", "EnableTappingDodge");
+
 		float padThld = ini.GetDoubleValue("Main", "GamePadThreshold", 0.15f);
 
 		std::int32_t stepDodge = ini.GetBoolValue("Main", "StepDodge");
@@ -25,7 +27,7 @@ namespace TKDodge
 		float iFrameDuration = ini.GetDoubleValue("Main", "iFrameDuration", 0.3f);
 		if (iFrameDuration < 0.f) { iFrameDuration = 0.f;}
 
-		settings = std::make_unique<INIData>(dodgeKey, padThld, stepDodge, dodgeStamina, iFrameDuration);
+		settings = std::make_unique<INIData>(dodgeKey, enableTappingDodge, padThld, stepDodge, dodgeStamina, iFrameDuration);
 
 		if (ini.GetBoolValue("Main", "EnableDebugLog")) {
 			spdlog::set_level(spdlog::level::debug);

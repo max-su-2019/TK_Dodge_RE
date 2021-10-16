@@ -66,6 +66,29 @@ namespace TKDodge
 		return index != kInvalid ? index + kGamepadOffset : kInvalid;
 	}
 
+	std::uint32_t InputEventHandler::GetSprintKey(RE::INPUT_DEVICE a_device)
+	{
+		using DeviceType = RE::INPUT_DEVICE;
+
+		const auto controlMap = RE::ControlMap::GetSingleton();
+		auto key = controlMap->GetMappedKey(RE::UserEvents::GetSingleton()->sprint, a_device);
+
+		switch (a_device) {
+		case DeviceType::kMouse:
+			key += kMouseOffset;
+			break;
+		case DeviceType::kKeyboard:
+			key += kKeyboardOffset;
+			break;
+		case DeviceType::kGamepad:
+			key = GetGamepadIndex((RE::BSWin32GamepadDevice::Key)key);
+			break;
+		default:
+			return 255;
+		}
+
+		return key;
+	}
 
 	EventResult InputEventHandler::ProcessEvent(RE::InputEvent* const* a_event, RE::BSTEventSource<RE::InputEvent*>*)
 	{
@@ -89,7 +112,7 @@ namespace TKDodge
 				continue;
 
 			const auto button = static_cast<RE::ButtonEvent*>(event);
-			if (!button->IsPressed())
+			if (!button || (!button->IsPressed() && !button->IsUp()))
 				continue;
 
 			auto key = button->GetIDCode();
@@ -106,13 +129,21 @@ namespace TKDodge
 			default:
 				continue;
 			}
+			const auto sprintKey = GetSprintKey(button->device.get());
 
-			if (( button->IsPressed()) && key == datahandler->settings->dodgeKey) {
+			auto DodgeButtonActived = [button, key, sprintKey, datahandler]() -> bool {
+				return datahandler->settings->enableTappingSprint ?
+							 button->IsUp() && button->HeldDuration() <= 0.2f && key == sprintKey :
+							 button->IsPressed() && key == datahandler->settings->dodgeKey;
+			};
+
+			if (DodgeButtonActived())
+			{
 				logger::debug("Dodge Key Press!");
 				const std::string dodge_event = DataHandler::GetSingleton()->GetDodgeEvent();
 				if (!dodge_event.empty() && playerCharacter->GetWeaponState() == RE::WEAPON_STATE::kDrawn && playerCharacter->GetSitSleepState() == RE::SIT_SLEEP_STATE::kNormal 
 					&& playerCharacter->GetKnockState() == RE::KNOCK_STATE_ENUM::kNormal && playerCharacter->GetFlyState() == RE::FLY_STATE::kNone && !playerCharacter->IsSneaking() && !playerCharacter->IsSwimming() 
-					&& !playerCharacter->IsStagger() && !playerCharacter->IsInJumpState() && playerCharacter->GetActorValue(RE::ActorValue::kStamina) > datahandler->settings->dodgeStamina){
+					&& !playerCharacter->IsStagger() && !playerCharacter->IsInJumpState() && playerCharacter->GetActorValue(RE::ActorValue::kStamina) >= datahandler->settings->dodgeStamina){
 					logger::debug(FMT_STRING("{} Trigger!"), dodge_event);
 					bool IsDodging = false;
 					if (playerCharacter->GetGraphVariableBool("bIsDodging", IsDodging) && IsDodging) {

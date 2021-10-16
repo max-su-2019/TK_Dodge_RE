@@ -33,6 +33,7 @@ namespace TKDodge
 		InputEventHandler& operator=(InputEventHandler&&) = delete;	
 
 		std::uint32_t GetGamepadIndex(RE::BSWin32GamepadDevice::Key a_key);
+		std::uint32_t GetSprintKey(RE::INPUT_DEVICE a_device);
 
 		enum : uint32_t
 		{

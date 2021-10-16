@@ -109,7 +109,10 @@ namespace TKDodge
 		auto enable_tdm = RE::TESForm::LookupByEditorID<RE::TESGlobal>("TDM_DirectionalMovement");
 
 		if (enable_tdm && enable_tdm->value && dire != MovDire::kNone) {
-			logger::debug("TDM Install, Force to Forward Attack!");
+			logger::debug("TDM Install, Force to Forward Dodge!");
+			return "TKDodgeForward";
+		} else if (RE::PlayerCharacter::GetSingleton()->IsSprinting() && !settings->enableTappingSprint) {
+			logger::debug("Player is Sprinting, Force to Forward Dodge!");
 			return "TKDodgeForward";
 		}
 
