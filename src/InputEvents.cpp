@@ -141,7 +141,7 @@ namespace TKDodge
 			{
 				logger::debug("Dodge Key Press!");
 				const std::string dodge_event = DataHandler::GetSingleton()->GetDodgeEvent();
-				if (!dodge_event.empty() && playerCharacter->GetWeaponState() == RE::WEAPON_STATE::kDrawn && playerCharacter->GetSitSleepState() == RE::SIT_SLEEP_STATE::kNormal 
+				if (!dodge_event.empty()  && playerCharacter->GetSitSleepState() == RE::SIT_SLEEP_STATE::kNormal 
 					&& playerCharacter->GetKnockState() == RE::KNOCK_STATE_ENUM::kNormal && playerCharacter->GetFlyState() == RE::FLY_STATE::kNone && !playerCharacter->IsSneaking() && !playerCharacter->IsSwimming() 
 					&& !playerCharacter->IsStagger() && !playerCharacter->IsInJumpState() && playerCharacter->GetActorValue(RE::ActorValue::kStamina) >= datahandler->settings->dodgeStamina){
 					logger::debug(FMT_STRING("{} Trigger!"), dodge_event);
