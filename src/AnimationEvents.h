@@ -21,13 +21,13 @@ namespace TKDodge
 				pc->GetAnimationGraphManager(graphMgr);
 
 			if (!graphMgr || !graphMgr->graphs.cbegin()) {
-				logger::error("Player Graph not found!");
+				ERROR("Player Graph not found!");
 				return false;
 			}
 
 			graphMgr->graphs.cbegin()->get()->AddEventSink(&g_eventhandler);
 
-			logger::debug("Register Animation Event Handler!");
+			DEBUG("Register Animation Event Handler!");
 
 			return true;
 		}

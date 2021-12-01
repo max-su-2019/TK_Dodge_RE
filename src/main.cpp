@@ -1,68 +1,72 @@
-﻿#include "version.h"
 #include "LoadGame.h"
+
+#if ANNIVERSARY_EDITION
+
+extern "C" DLLEXPORT constinit auto SKSEPlugin_Version = []()
+{
+	SKSE::PluginVersionData data{};
+
+	data.PluginVersion(Version::MAJOR);
+	data.PluginName(Version::NAME);
+	data.AuthorName("Dropkicker"sv);
+
+	data.CompatibleVersions({ SKSE::RUNTIME_LATEST });
+	data.UsesAddressLibrary(true);
+
+	return data;
+}();
+
+#else
 
 extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Query(const SKSE::QueryInterface* a_skse, SKSE::PluginInfo* a_info)
 {
-#ifndef NDEBUG
-	auto sink = std::make_shared<spdlog::sinks::msvc_sink_mt>();
-#else
-	auto path = logger::log_directory();
-	if (!path) {
-		return false;
-	}
-
-	*path /= "TK Dodge RE.log"sv;
-	auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path->string(), true);
-#endif
-
-	auto log = std::make_shared<spdlog::logger>("global log"s, std::move(sink));
-
-#ifndef NDEBUG
-	log->set_level(spdlog::level::trace);
-#else
-	log->set_level(spdlog::level::info);
-	log->flush_on(spdlog::level::trace);
-#endif
-
-	spdlog::set_default_logger(std::move(log));
-	spdlog::set_pattern("%g(%#): [%^%l%$] %v"s);
-
-	logger::info(FMT_STRING("TK Dodge RE v{}"), MYFP_VERSION_VERSTRING);
+	DKUtil::Logger::Init(Version::PROJECT, Version::NAME);
 
 	a_info->infoVersion = SKSE::PluginInfo::kVersion;
-	a_info->name = "TK Dodge RE";
-	a_info->version = MYFP_VERSION_MAJOR;
+	a_info->name = Version::PROJECT.data();
+	a_info->version = Version::MAJOR;
 
 	if (a_skse->IsEditor()) {
-		logger::critical("Loaded in editor, marking as incompatible"sv);
+		ERROR("Loaded in editor, marking as incompatible"sv);
 		return false;
 	}
 
 	const auto ver = a_skse->RuntimeVersion();
 	if (ver < SKSE::RUNTIME_1_5_39) {
-		logger::critical(FMT_STRING("Unsupported runtime version {}"), ver.string());
+		ERROR("Unable to load this plugin, incompatible runtime version!\nExpected: Newer than 1-5-39-0 (A.K.A Special Edition)\nDetected: {}", ver.string());
 		return false;
 	}
 
 	return true;
 }
 
+#endif
 
 
 extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_skse)
 {
-	logger::info("TK Dodge RE loaded");
+#if ANNIVERSARY_EDITION
+
+	DKUtil::Logger::Init(Version::PROJECT, Version::NAME);
+
+	if (REL::Module::get().version() < SKSE::RUNTIME_1_6_317) {
+		ERROR("Unable to load this plugin, incompatible runtime version!\nExpected: Newer than 1-6-317-0 (A.K.A Anniversary Edition)\nDetected: {}", REL::Module::get().version().string());
+		return false;
+	}
+
+#endif
+
+	INFO("{} v{} loaded", Version::PROJECT, Version::NAME);
 
 	SKSE::Init(a_skse);
 
 	auto g_message = SKSE::GetMessagingInterface();
-
 	if (!g_message) {
-		logger::error("Messaging Interface Not Found!");
+		ERROR("Messaging Interface Not Found!");
 		return false;
 	}
-	
+
 	g_message->RegisterListener(TKDodge::EventCallback);
-	
+
 	return true;
 }

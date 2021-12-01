@@ -10,7 +10,6 @@ namespace TKDodge
 	DataHandler::DataHandler()
 	{
 		CSimpleIniA ini;
-		SI_Error rc = ini.LoadFile(SETTINGFILE_PATH);
 
 		std::uint32_t dodgeKey = ini.GetLongValue("Main", "DodgeHotkey", 42);
 
@@ -31,7 +30,7 @@ namespace TKDodge
 
 		if (ini.GetBoolValue("Main", "EnableDebugLog")) {
 			spdlog::set_level(spdlog::level::debug);
-			logger::debug("Enable Debug Log!");
+			DEBUG("Enable Debug Log!");
 		}
 
 		InputEventHandler::Register();
@@ -40,7 +39,7 @@ namespace TKDodge
 	void EventCallback(SKSE::MessagingInterface::Message* msg)
 	{
 		if (msg->type == SKSE::MessagingInterface::kDataLoaded) {
-			logger::info("Data Load CallBack Trigger!");
+			INFO("Data Load CallBack Trigger!");
 			DataHandler::GetSingleton();
 		}	
 	}

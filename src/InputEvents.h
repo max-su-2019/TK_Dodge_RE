@@ -11,11 +11,13 @@ namespace TKDodge
 
 		static void Register()
 		{
-			logger::info("Start Registered!");
+			INFO("Start Registered!");
 			auto deviceManager = RE::BSInputDeviceManager::GetSingleton();
 			deviceManager->AddEventSink(InputEventHandler::GetSingleton());
-			logger::info("Registered {}"sv, typeid(RE::InputEvent).name());
+			INFO("Registered {}"sv, typeid(RE::InputEvent).name());
 		}
+
+		static std::uint32_t GetSprintKey(RE::INPUT_DEVICE a_device);
 
 	private:
 		static InputEventHandler* GetSingleton()
@@ -32,8 +34,8 @@ namespace TKDodge
 		InputEventHandler& operator=(const InputEventHandler&) = delete;
 		InputEventHandler& operator=(InputEventHandler&&) = delete;	
 
-		std::uint32_t GetGamepadIndex(RE::BSWin32GamepadDevice::Key a_key);
-		std::uint32_t GetSprintKey(RE::INPUT_DEVICE a_device);
+		
+		static std::uint32_t GetGamepadIndex(RE::BSWin32GamepadDevice::Key a_key);
 
 		enum : uint32_t
 		{

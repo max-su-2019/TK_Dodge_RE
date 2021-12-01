@@ -1,0 +1,13 @@
+{
+    "name":  "TK-Dodge-RE",
+    "version-string":  "0.4.7",
+    "description":  "",
+    "license":  "MIT",
+    "dependencies":  [
+                         "spdlog"
+                     ],
+    "script-version":  "11129",
+    "build-config":  "md",
+    "build-target":  "se",
+    "install-name":  "TK Dodge RE"
+}

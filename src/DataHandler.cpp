@@ -27,7 +27,7 @@ namespace TKDodge
 			if (GetKeyHeldDuration(key, heldDur) && (!pickedDir.has_value() || heldDur <= recordDur)) {
 				pickedDir.emplace(dir.first);
 				recordDur = heldDur;
-				logger::debug(FMT_STRING("Get a Held Direction Key Index {:x}, Duration {}"), key, recordDur);
+				DEBUG(FMT_STRING("Get a Held Direction Key Index {:x}, Duration {}"), key, recordDur);
 			}
 		}
 
@@ -54,17 +54,17 @@ namespace TKDodge
 		if (inputMgr && inputMgr->GetGamepad()) {
 			auto gamePad = (RE::BSWin32GamepadDevice*)(inputMgr->GetGamepad());
 			if (gamePad) {
-				logger::debug(FMT_STRING("Current LX is {}, Current LY is {}"), gamePad->curLX, gamePad->curLY);
+				DEBUG(FMT_STRING("Current LX is {}, Current LY is {}"), gamePad->curLX, gamePad->curLY);
 
 				float dir_xy[2] = { gamePad->curLX, gamePad->curLY };
 				static const float dir_base[2] = { 0, 1.0f };
 
 				float power = sqrt(std::powf(gamePad->curLX, 2) + std::powf(gamePad->curLY, 2));
-				logger::debug(FMT_STRING("Current Power is {}"), power);
+				DEBUG(FMT_STRING("Current Power is {}"), power);
 
 				float theta = (dir_xy[0] * dir_base[0] + dir_xy[1] * dir_base[1]) / sqrt(dir_xy[0] * dir_xy[0] + dir_xy[1] * dir_xy[1]) / sqrt(dir_base[0] * dir_base[0] + dir_base[1] * dir_base[1]);
 				theta = gamePad->curLX >= 0.f ? std::acos(theta) : -std::acos(theta);
-				logger::debug(FMT_STRING("theta is {}"), theta);
+				DEBUG(FMT_STRING("theta is {}"), theta);
 
 				auto dir = NormalAbsoluteAngle(theta);
 				dir /= 6.283185f;
@@ -73,7 +73,7 @@ namespace TKDodge
 				dir = fmod(dir, 4.0f);
 				dir = floor(dir);
 				dir += 1.0f;
-				logger::debug(FMT_STRING("GamePad Direction is {}"), dir);
+				DEBUG(FMT_STRING("GamePad Direction is {}"), dir);
 
 				if (power > settings->padThld) {
 					switch (std::int32_t(dir)) {
@@ -106,14 +106,14 @@ namespace TKDodge
 		else if (inputMgr->IsGamepadConnected())
 			dire = GetGamePadDireValue();
 
-		auto enable_tdm = RE::TESForm::LookupByEditorID<RE::TESGlobal>("TDM_DirectionalMovement");
+		auto tdm_freeMov = RE::TESForm::LookupByEditorID<RE::TESGlobal>("TDM_DirectionalMovement");
 
-		if (enable_tdm && enable_tdm->value && dire != MovDire::kNone) {
-			logger::debug("TDM Install, Force to Forward Dodge!");
+		if (tdm_freeMov && tdm_freeMov->value && dire != MovDire::kNone) {
+			DEBUG("TDM Free Movement, Force to Forward Dodge!");
 			return "TKDodgeForward";
-		} else if (RE::PlayerCharacter::GetSingleton()->IsSprinting() && !settings->enableTappingSprint) {
-			logger::debug("Player is Sprinting, Force to Forward Dodge!");
-			return "TKDodgeForward";
+		} else if (tdm_freeMov && !tdm_freeMov->value && RE::PlayerCharacter::GetSingleton()->IsSprinting()  && !settings->enableTappingSprint) {
+			DEBUG("Player is Sprinting in TDM target-lock, Disable Dodge!");
+			return "";
 		}
 
 		switch (dire){

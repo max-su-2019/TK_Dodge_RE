@@ -33,7 +33,7 @@ namespace TKDodge
 			explicit INIData(std::uint32_t a_dodgeKey, bool a_enableTappingSprint, float a_padThld, std::int32_t a_istepDodge, float a_dodgestamina, float a_iFrameDuration) :
 				dodgeKey(a_dodgeKey), enableTappingSprint(a_enableTappingSprint), padThld(a_padThld), istepDodge(a_istepDodge), dodgeStamina(a_dodgestamina), iFrameDuration(a_iFrameDuration)
 			{
-				logger::info(FMT_STRING("Set Dodge Hotkey to {}, Tapping Sprint to {}, GamePad Threshold to {}, Step Dodge to {}, Dodge Stamina to {}, iFrame Duration to {}"), dodgeKey, enableTappingSprint,  padThld, istepDodge, dodgeStamina, a_iFrameDuration);
+				INFO(FMT_STRING("Set Dodge Hotkey to {}, Tapping Sprint to {}, GamePad Threshold to {}, Step Dodge to {}, Dodge Stamina to {}, iFrame Duration to {}"), dodgeKey, enableTappingSprint,  padThld, istepDodge, dodgeStamina, a_iFrameDuration);
 			};
 		
 			const std::uint32_t		dodgeKey;
@@ -65,7 +65,6 @@ namespace TKDodge
 		DataHandler& operator=(const DataHandler&) = delete;
 
 		DataHandler& operator=(DataHandler&&) = delete;
-
 
 		//---------------------------------- For Keyboard---------------------------------------------------------------
 
