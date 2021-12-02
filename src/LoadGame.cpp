@@ -10,6 +10,7 @@ namespace TKDodge
 	DataHandler::DataHandler()
 	{
 		CSimpleIniA ini;
+		ini.LoadFile(SETTINGFILE_PATH);
 
 		std::uint32_t dodgeKey = ini.GetLongValue("Main", "DodgeHotkey", 42);
 

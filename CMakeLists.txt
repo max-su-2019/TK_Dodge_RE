@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.19)
 # info
 project(
 	TK_Dodge_RE
-	VERSION 0.4.8
+	VERSION 0.4.82
 	LANGUAGES CXX
 )
 
