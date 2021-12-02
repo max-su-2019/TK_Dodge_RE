@@ -23,10 +23,12 @@ namespace TKDodge
 		float dodgeStamina = ini.GetDoubleValue("Main", "DodgeStamina", 10.f);
 		if (dodgeStamina < 0.f) { dodgeStamina = 0.f;}
 
+		bool enableSneakDodge = ini.GetBoolValue("Main", "EnableSneakDodge");
+
 		float iFrameDuration = ini.GetDoubleValue("Main", "iFrameDuration", 0.3f);
 		if (iFrameDuration < 0.f) { iFrameDuration = 0.f;}
 
-		settings = std::make_unique<INIData>(dodgeKey, enableTappingDodge, padThld, stepDodge, dodgeStamina, iFrameDuration);
+		settings = std::make_unique<INIData>(dodgeKey, enableTappingDodge, padThld, stepDodge, dodgeStamina, enableSneakDodge, iFrameDuration);
 
 		if (ini.GetBoolValue("Main", "EnableDebugLog")) {
 			spdlog::set_level(spdlog::level::debug);

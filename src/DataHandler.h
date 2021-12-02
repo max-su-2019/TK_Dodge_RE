@@ -30,10 +30,11 @@ namespace TKDodge
 
 			INIData& operator=(INIData&&) = delete;
 
-			explicit INIData(std::uint32_t a_dodgeKey, bool a_enableTappingSprint, float a_padThld, std::int32_t a_istepDodge, float a_dodgestamina, float a_iFrameDuration) :
-				dodgeKey(a_dodgeKey), enableTappingSprint(a_enableTappingSprint), padThld(a_padThld), istepDodge(a_istepDodge), dodgeStamina(a_dodgestamina), iFrameDuration(a_iFrameDuration)
+			explicit INIData(std::uint32_t a_dodgeKey, bool a_enableTappingSprint, float a_padThld, std::int32_t a_istepDodge, float a_dodgestamina, bool a_enableSneakDodge, float a_iFrameDuration) :
+				dodgeKey(a_dodgeKey), enableTappingSprint(a_enableTappingSprint), padThld(a_padThld), istepDodge(a_istepDodge), dodgeStamina(a_dodgestamina), enableSneakDodge(a_enableSneakDodge), iFrameDuration(a_iFrameDuration)
 			{
-				INFO(FMT_STRING("Set Dodge Hotkey to {}, Tapping Sprint to {}, GamePad Threshold to {}, Step Dodge to {}, Dodge Stamina to {}, iFrame Duration to {}"), dodgeKey, enableTappingSprint,  padThld, istepDodge, dodgeStamina, a_iFrameDuration);
+				INFO(FMT_STRING("Set Dodge Hotkey to {}, Tapping Sprint to {}, GamePad Threshold to {}, Step Dodge to {}, Dodge Stamina to {}, Sneak Dodge to {}, iFrame Duration to {}"), 
+					dodgeKey, enableTappingSprint, padThld, istepDodge, dodgeStamina, enableSneakDodge, iFrameDuration);
 			};
 		
 			const std::uint32_t		dodgeKey;
@@ -41,6 +42,7 @@ namespace TKDodge
 			const float				padThld;
 			const std::int32_t		istepDodge;
 			const float				dodgeStamina;
+			const bool				enableSneakDodge;
 			const float				iFrameDuration;
 		};
 
