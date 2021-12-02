@@ -137,14 +137,13 @@ namespace TKDodge
 							 button->IsPressed() && key == datahandler->settings->dodgeKey;
 			};
 
-			if (DodgeButtonActived())
-			{
+			if (DodgeButtonActived()){
 				DEBUG("Dodge Key Press!");
 				const std::string dodge_event = DataHandler::GetSingleton()->GetDodgeEvent();
-				if (!dodge_event.empty()  && playerCharacter->GetSitSleepState() == RE::SIT_SLEEP_STATE::kNormal && playerCharacter->GetKnockState() == RE::KNOCK_STATE_ENUM::kNormal &&
+				if ( !dodge_event.empty()  && playerCharacter->GetSitSleepState() == RE::SIT_SLEEP_STATE::kNormal && playerCharacter->GetKnockState() == RE::KNOCK_STATE_ENUM::kNormal &&
 					 playerCharacter->GetFlyState() == RE::FLY_STATE::kNone && (!playerCharacter->IsSneaking() || datahandler->settings->enableSneakDodge) && !playerCharacter->IsSwimming() &&
-					!playerCharacter->IsInJumpState() && !playerCharacter->IsInKillMove() && (playerCharacter->GetActorValue(RE::ActorValue::kStamina) >= datahandler->settings->dodgeStamina || datahandler->settings->dodgeStamina == 0.f)
-					){
+					!playerCharacter->IsInJumpState() && !playerCharacter->IsInKillMove() && (playerCharacter->GetActorValue(RE::ActorValue::kStamina) >= datahandler->settings->dodgeStamina || datahandler->settings->dodgeStamina == 0.f) )
+				{
 					DEBUG(FMT_STRING("{} Trigger!"), dodge_event);
 					bool IsDodging = false;
 					if (playerCharacter->GetGraphVariableBool("bIsDodging", IsDodging) && IsDodging) {
