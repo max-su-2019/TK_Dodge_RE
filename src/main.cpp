@@ -1,72 +1,117 @@
-#include "LoadGame.h"
-
-#if ANNIVERSARY_EDITION
-
-extern "C" DLLEXPORT constinit auto SKSEPlugin_Version = []()
+#include "Hooks.h"
+#include "InputEvents.h"
+#include "DataHandler.h"
+#include "AnimationEvents.h"
+void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
 {
-	SKSE::PluginVersionData data{};
+	switch (a_msg->type) {
+		// Skyrim lifecycle events.
+	case SKSE::MessagingInterface::kPostLoad:      // Called after all plugins have finished running SKSEPlugin_Load.
+												   // It is now safe to do multithreaded operations, or operations against other plugins.
+	case SKSE::MessagingInterface::kPostPostLoad:  // Called after all kPostLoad message handlers have run.
+	case SKSE::MessagingInterface::kInputLoaded:   // Called when all game data has been found.
+		break;
+	case SKSE::MessagingInterface::kDataLoaded:  // All ESM/ESL/ESP plugins have loaded, main menu is now active.
+		// It is now safe to access form data.
+		Settings::readSettings();
+		InputEventHandler::Register();
+		animEventHandler::RegisterForPlayer();
+		Hooks::install();
+		break;
 
-	data.PluginVersion(Version::MAJOR);
-	data.PluginName(Version::NAME);
-	data.AuthorName("Dropkicker"sv);
+		// Skyrim game events.
+	case SKSE::MessagingInterface::kNewGame:       // Player starts a new game from main menu.
+	case SKSE::MessagingInterface::kPreLoadGame:   // Player selected a game to load, but it hasn't loaded yet.
+												   // Data will be the name of the loaded save.
+	case SKSE::MessagingInterface::kPostLoadGame:  // Player's selected save game has finished loading.
+												   // Data will be a boolean indicating whether the load was successful.
+	case SKSE::MessagingInterface::kSaveGame:      // The player has saved a game.
+												   // Data will be the save name.
+	case SKSE::MessagingInterface::kDeleteGame:    // The player deleted a saved game from within the load menu.
+		break;
+	}
+}
 
-	data.CompatibleVersions({ SKSE::RUNTIME_LATEST });
-	data.UsesAddressLibrary(true);
-
-	return data;
-}();
-
+void InitializeLog()
+{
+#ifndef NDEBUG
+	auto sink = std::make_shared<spdlog::sinks::msvc_sink_mt>();
 #else
+	auto path = logger::log_directory();
+	if (!path) {
+		util::report_and_fail("Failed to find standard logging directory"sv);
+	}
+
+	*path /= fmt::format("{}.log"sv, Plugin::NAME);
+	auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path->string(), true);
+#endif
+
+#ifndef NDEBUG
+	const auto level = spdlog::level::trace;
+#else
+	const auto level = spdlog::level::info;
+#endif
+
+	auto log = std::make_shared<spdlog::logger>("global log"s, std::move(sink));
+	log->set_level(level);
+	log->flush_on(level);
+
+	spdlog::set_default_logger(std::move(log));
+	spdlog::set_pattern("%g(%#): [%^%l%$] %v"s);
+}
 
 extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Query(const SKSE::QueryInterface* a_skse, SKSE::PluginInfo* a_info)
 {
-	DKUtil::Logger::Init(Version::PROJECT, Version::NAME);
-
 	a_info->infoVersion = SKSE::PluginInfo::kVersion;
-	a_info->name = Version::PROJECT.data();
-	a_info->version = Version::MAJOR;
+	a_info->name = Plugin::NAME.data();
+	a_info->version = Plugin::VERSION[0];
 
 	if (a_skse->IsEditor()) {
-		ERROR("Loaded in editor, marking as incompatible"sv);
+		logger::critical("Loaded in editor, marking as incompatible"sv);
 		return false;
 	}
 
 	const auto ver = a_skse->RuntimeVersion();
 	if (ver < SKSE::RUNTIME_1_5_39) {
-		ERROR("Unable to load this plugin, incompatible runtime version!\nExpected: Newer than 1-5-39-0 (A.K.A Special Edition)\nDetected: {}", ver.string());
+		logger::critical(FMT_STRING("Unsupported runtime version {}"), ver.string());
 		return false;
 	}
 
 	return true;
 }
 
+#ifdef SKYRIM_SUPPORT_AE
+extern "C" DLLEXPORT constinit auto SKSEPlugin_Version = []() {
+	SKSE::PluginVersionData v;
+
+	v.PluginVersion(Plugin::VERSION);
+	v.PluginName(Plugin::NAME);
+
+	v.UsesAddressLibrary(true);
+	v.CompatibleVersions({ SKSE::RUNTIME_LATEST });
+
+	return v;
+}();
 #endif
+
 
 
 extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_skse)
 {
-#if ANNIVERSARY_EDITION
-
-	DKUtil::Logger::Init(Version::PROJECT, Version::NAME);
-
-	if (REL::Module::get().version() < SKSE::RUNTIME_1_6_317) {
-		ERROR("Unable to load this plugin, incompatible runtime version!\nExpected: Newer than 1-6-317-0 (A.K.A Anniversary Edition)\nDetected: {}", REL::Module::get().version().string());
-		return false;
-	}
-
+#ifndef NDEBUG
+	while (!IsDebuggerPresent()) { Sleep(100); }
 #endif
 
-	INFO("{} v{} loaded", Version::PROJECT, Version::NAME);
+	InitializeLog();
+	logger::info("{} v{}"sv, Plugin::NAME, Plugin::VERSION.string());
 
 	SKSE::Init(a_skse);
 
-	auto g_message = SKSE::GetMessagingInterface();
-	if (!g_message) {
-		ERROR("Messaging Interface Not Found!");
+	auto messaging = SKSE::GetMessagingInterface();
+	if (!messaging->RegisterListener("SKSE", MessageHandler)) {
 		return false;
 	}
 
-	g_message->RegisterListener(TKDodge::EventCallback);
-
 	return true;
 }
+

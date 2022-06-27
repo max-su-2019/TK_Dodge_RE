@@ -1,13 +1,18 @@
 {
-    "name":  "TK-Dodge-RE",
-    "version-string":  "0.4.82",
-    "description":  "",
-    "license":  "MIT",
-    "dependencies":  [
-                         "spdlog"
-                     ],
-    "script-version":  "11203",
-    "build-config":  "md",
-    "build-target":  "se",
-    "install-name":  "TK Dodge RE"
+  "name": "tkdodgere",
+  "version": "1",
+  "dependencies": [
+    "boost-stl-interfaces",
+    "rsm-binary-io",
+    "simpleini",
+    "spdlog",
+    "xbyak"
+  ],
+  "builtin-baseline": "1c5939e275082fb6f4b2c8a546cd904b978f55ac",
+  "overrides": [
+    {
+      "name": "fmt",
+      "version": "8.0.1"
+    }
+  ]
 }
