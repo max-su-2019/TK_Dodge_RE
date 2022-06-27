@@ -111,13 +111,6 @@ EventResult InputEventHandler::ProcessEvent(RE::InputEvent* const* a_event, RE::
 	if (ui->GameIsPaused()) {
 		return EventResult::kContinue;
 	}
-	const auto controlMap = RE::ControlMap::GetSingleton();
-	if (!controlMap->IsMovementControlsEnabled() || !controlMap->IsFightingControlsEnabled()) {
-		return EventResult::kContinue;
-	}
-
-	auto datahandler = TKRE::GetSingleton();
-
 
 	for (auto event = *a_event; event; event = event->next) {
 		if (event->eventType != EventType::kButton)
@@ -132,10 +125,8 @@ EventResult InputEventHandler::ProcessEvent(RE::InputEvent* const* a_event, RE::
 			continue;
 		}
 
-		uint32_t id = getOffsetButtonIDCode(button);
-
-		if (id == Settings::dodgeKey) {
-			TKRE::GetSingleton()->dodge();
+		if (getOffsetButtonIDCode(button) == Settings::dodgeKey) {
+			TKRE::dodge();
 		}
 
 	}

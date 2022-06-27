@@ -16,8 +16,6 @@ public:
 		logger::info("..Done");
 	}
 
-	static std::uint32_t GetSprintKey(RE::INPUT_DEVICE a_device);
-
 private:
 	static InputEventHandler* GetSingleton()
 	{

@@ -5,15 +5,11 @@ class TKRE
 {
 
 public:
-	static TKRE* GetSingleton()
-	{
-		static TKRE singleton;
-		return  std::addressof(singleton);
-	}
+	static void GetDodgeEvent(std::string& a_event);
 
-	const std::string GetDodgeEvent() const;
+	static void dodge();
 
-	void dodge();
+	static void applyDodgeCost();
 
 private:
 	TKRE() = default;
@@ -36,12 +32,13 @@ class Settings
 public:
 	static inline std::uint32_t dodgeKey = 42;
 	static inline bool enableTappingSprint = false;
-	static inline float padThld = 0.15f;
 	static inline bool stepDodge = false;
 	static inline float dodgeStamina = 10.f;
 	static inline bool enableSneakDodge = false;
+	static inline bool enableDodgeAttackCancel = true;
 	static inline float iFrameDuration = 0.3f;
-
+	static inline std::string defaultDodgeEvent = "TKDodgeBack";
+	static inline float SprintingPressDuration = 0.3f;
 	static void readSettings();
 
 private:

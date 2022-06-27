@@ -59,31 +59,6 @@ inline float GetAngle(RE::NiPoint2& a, RE::NiPoint2& b)
 	return atan2(CrossProduct(a, b), DotProduct(a, b));
 }
 
-const std::string TKRE::GetDodgeEvent() const
-{
-	auto playerControls = RE::PlayerControls::GetSingleton();
-	if (!playerControls || !playerControls->attackBlockHandler ||
-		!playerControls->attackBlockHandler->inputEventHandlingEnabled || !playerControls->movementHandler || !playerControls->movementHandler->inputEventHandlingEnabled) {
-		return "";
-	}
-
-	auto normalizedInputDirection = Vec2Normalize(playerControls->data.prevMoveVec);
-	if (normalizedInputDirection.x == 0.f && normalizedInputDirection.y == 0.f) {
-		return "TKDodgeBack";
-	}
-	RE::NiPoint2 forwardVector(0.f, 1.f);
-	float dodgeAngle = GetAngle(normalizedInputDirection, forwardVector);
-	if (dodgeAngle >= -2 * PI8 && dodgeAngle < 2 * PI8) {
-		return "TKDodgeForward";
-	} else if (dodgeAngle >= -6 * PI8 && dodgeAngle < -2 * PI8) {
-		return "TKDodgeLeft";
-	} else if (dodgeAngle >= 6 * PI8 || dodgeAngle < -6 * PI8) {
-		return "TKDodgeBack";
-	} else if (dodgeAngle >= 2 * PI8 && dodgeAngle < 6 * PI8) {
-		return "TKDodgeRight";
-	}
-	return "TKDodgeBack";
-}
 
 inline bool isJumping(RE::Actor* a_actor)
 {
@@ -91,27 +66,61 @@ inline bool isJumping(RE::Actor* a_actor)
 	return a_actor->GetGraphVariableBool("bInJumpState", result) && result;
 }
 
-void TKRE::dodge() {
-	//logger::info("dodging");
-	auto pc = RE::PlayerCharacter::GetSingleton();
-	if (pc->IsSprinting() && Settings::enableTappingSprint) {
+void TKRE::GetDodgeEvent(std::string& a_event)
+{
+	auto normalizedInputDirection = Vec2Normalize(RE::PlayerControls::GetSingleton()->data.prevMoveVec);
+	if (normalizedInputDirection.x == 0.f && normalizedInputDirection.y == 0.f) {
 		return;
 	}
-	const std::string dodge_event = TKRE::GetSingleton()->GetDodgeEvent();
-	if (!dodge_event.empty() && pc->GetSitSleepState() == RE::SIT_SLEEP_STATE::kNormal && pc->GetKnockState() == RE::KNOCK_STATE_ENUM::kNormal &&
-		pc->GetFlyState() == RE::FLY_STATE::kNone && (!pc->IsSneaking() || Settings::enableSneakDodge) && !pc->IsSwimming() &&
-		!isJumping(pc) && !pc->IsInKillMove() && (pc->GetActorValue(RE::ActorValue::kStamina) >= Settings::dodgeStamina)) {
-		//DEBUG(FMT_STRING("{} Trigger!"), dodge_event);
-		bool IsDodging = false;
-		if (pc->GetGraphVariableBool("bIsDodging", IsDodging) && IsDodging) {
-			//DEBUG("Player is already dodging!");
-			return;
-		}
-		if (Settings::stepDodge) {
-			pc->SetGraphVariableInt("iStep", 2);
-		}
-		pc->SetGraphVariableFloat("TKDR_IframeDuration", Settings::iFrameDuration);  //Set invulnerable frame duration
-		pc->NotifyAnimationGraph(dodge_event);                                       //Send TK Dodge Event
+	RE::NiPoint2 forwardVector(0.f, 1.f);
+	float dodgeAngle = GetAngle(normalizedInputDirection, forwardVector);
+	if (dodgeAngle >= -2 * PI8 && dodgeAngle < 2 * PI8) {
+		a_event = "TKDodgeForward";
+	} else if (dodgeAngle >= -6 * PI8 && dodgeAngle < -2 * PI8) {
+		a_event = "TKDodgeLeft";
+	} else if (dodgeAngle >= 6 * PI8 || dodgeAngle < -6 * PI8) {
+		a_event = "TKDodgeBack";
+	} else if (dodgeAngle >= 2 * PI8 && dodgeAngle < 6 * PI8) {
+		a_event = "TKDodgeRight";
+	}
+}
+//bunch of ugly checks
+inline bool canDodge(RE::PlayerCharacter* a_pc) {
+	auto playerControls = RE::PlayerControls::GetSingleton();
+	bool bIsDodging = false;
+	auto controlMap = RE::ControlMap::GetSingleton();
+	auto attackState = a_pc->GetAttackState();
+	return a_pc->GetGraphVariableBool("bIsDodging", bIsDodging) && !bIsDodging  
+		&& ((attackState == RE::ATTACK_STATE_ENUM::kNone) || Settings::enableDodgeAttackCancel)
+		&& (!a_pc->IsSprinting() || !Settings::enableTappingSprint) 
+		&& (controlMap->IsMovementControlsEnabled() && controlMap->IsFightingControlsEnabled())
+		&& (!a_pc->IsSneaking() || Settings::enableSneakDodge)
+		&& playerControls && playerControls->attackBlockHandler && playerControls->attackBlockHandler->inputEventHandlingEnabled && playerControls->movementHandler && playerControls->movementHandler->inputEventHandlingEnabled &&
+		(a_pc->GetSitSleepState() == RE::SIT_SLEEP_STATE::kNormal && a_pc->GetKnockState() == RE::KNOCK_STATE_ENUM::kNormal && a_pc->GetFlyState() == RE::FLY_STATE::kNone) && !a_pc->IsSwimming() && !isJumping(a_pc) && !a_pc->IsInKillMove() && (a_pc->GetActorValue(RE::ActorValue::kStamina) >= Settings::dodgeStamina);
+}
+
+void TKRE::dodge()
+{
+	logger::debug("dodging");
+	auto pc = RE::PlayerCharacter::GetSingleton();
+	if (!canDodge(pc)) {
+		logger::debug("cannot dodge");
+		return;
+	}
+	std::string dodge_event = Settings::defaultDodgeEvent;
+	GetDodgeEvent(dodge_event);
+	if (Settings::stepDodge) {
+		pc->SetGraphVariableInt("iStep", 2);
+	}
+	pc->SetGraphVariableFloat("TKDR_IframeDuration", Settings::iFrameDuration);  //Set invulnerable frame duration
+	pc->NotifyAnimationGraph(dodge_event);                                       //Send TK Dodge Event
+}
+
+void TKRE::applyDodgeCost()
+{
+	auto pc = RE::PlayerCharacter::GetSingleton();
+	if (pc) {
+		pc->As<RE::ActorValueOwner>()->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kStamina, -Settings::dodgeStamina);
 	}
 }
 
@@ -147,16 +156,19 @@ void Settings::ReadBoolSetting(CSimpleIniA& a_ini, const char* a_sectionName, co
 
 
 void Settings::readSettings() {
+	logger::info("Reading Settings...");
 	CSimpleIniA ini;
 	ini.LoadFile(SETTINGFILE_PATH);
 
 	ReadIntSetting(ini, "Main", "DodgeHotkey", dodgeKey);
 	ReadBoolSetting(ini, "Main", "EnableTappingDodge", enableTappingSprint);
-	ReadFloatSetting(ini, "Main", "GamePadThreshold", padThld);
 	ReadBoolSetting(ini, "Main", "StepDodge", stepDodge);
+	ReadBoolSetting(ini, "Main", "enableDodgeAttackCancel", enableDodgeAttackCancel);
 	ReadFloatSetting(ini, "Main", "DodgeStamina", dodgeStamina);
 	ReadBoolSetting(ini, "Main", "EnableSneakDodge", enableSneakDodge);
 	ReadFloatSetting(ini, "Main", "iFrameDuration", iFrameDuration);
+	defaultDodgeEvent = ini.GetValue("Main", "defaultDodgeEvent", "TKDodgeBack");
+	ReadFloatSetting(ini, "Main", "SprintingPressDuration", SprintingPressDuration);
 	if (iFrameDuration < 0.f) {
 		iFrameDuration = 0.f;
 	}
@@ -165,4 +177,5 @@ void Settings::readSettings() {
 		spdlog::set_level(spdlog::level::debug);
 		logger::debug("Debug log enabled");
 	}
+	logger::info("...done");
 }

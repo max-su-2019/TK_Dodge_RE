@@ -8,7 +8,7 @@ namespace Hooks
 	public:
 		static void Hook()
 		{
-			REL::Relocation<std::uintptr_t> SprintHandlerVtbl{ REL::ID(263057) };  // 166F1D8
+			REL::Relocation<std::uintptr_t> SprintHandlerVtbl{ RE::VTABLE_SprintHandler[0] };  // 166F1D8
 			_ProcessButton = SprintHandlerVtbl.write_vfunc(0x4, ProcessButton);
 		}
 

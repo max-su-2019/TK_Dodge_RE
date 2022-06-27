@@ -5,11 +5,11 @@ namespace Hooks
 {
 	void install()
 	{
-		logger::trace("Hooking...");
+		logger::info("Hooking...");
 
 		SprintHandlerHook::Hook();
 
-		logger::trace("...success");
+		logger::info("...success");
 	}
 	static bool bStoppingSprint = false;
 	//static float heldDownTimeOffset = 0.f;
@@ -26,9 +26,9 @@ namespace Hooks
 			if (userEvent == userEvents->sprint) {
 				if (a_event->IsDown() && (playerCharacter->unkBDD & FlagBDD::kSprinting) != FlagBDD::kNone) {  // stopping sprint
 					bStoppingSprint = true;
-				} else if (a_event->HeldDuration() < 0.3) {//TODO:ADD THIS to settings
+				} else if (a_event->HeldDuration() < Settings::SprintingPressDuration) {//TODO:ADD THIS to settings
 					if (a_event->IsUp()) {
-						TKRE::GetSingleton()->dodge();
+						TKRE::dodge();
 						bStoppingSprint = false;
 					}
 					return;
