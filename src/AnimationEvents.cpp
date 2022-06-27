@@ -1,5 +1,5 @@
 #include "AnimationEvents.h"
-#include "DataHandler.h"
+#include "TKRE.h"
 
 constexpr uint32_t hash(const char* data, size_t const size) noexcept
 {
@@ -21,7 +21,7 @@ RE::BSEventNotifyControl animEventHandler::HookedProcessEvent(RE::BSAnimationGra
 {
 	FnProcessEvent fn = fnHash.at(*(uint64_t*)this);
 	if (a_event.tag == "TKDR_DodgeStart") {
-		auto datahandler = DataHandler::GetSingleton();
+		auto datahandler = TKRE::GetSingleton();
 		//if (!RE::PlayerCharacter::IsGodMode())
 		RE::PlayerCharacter::GetSingleton()->As<RE::ActorValueOwner>()->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kStamina, -Settings::dodgeStamina);
 	}

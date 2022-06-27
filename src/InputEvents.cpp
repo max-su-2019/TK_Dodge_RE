@@ -1,5 +1,5 @@
 #include "InputEvents.h"
-#include "DataHandler.h"
+#include "TKRE.h"
 #include "AnimationEvents.h"
 
 std::uint32_t InputEventHandler::GetGamepadIndex(RE::BSWin32GamepadDevice::Key a_key)
@@ -116,7 +116,7 @@ EventResult InputEventHandler::ProcessEvent(RE::InputEvent* const* a_event, RE::
 		return EventResult::kContinue;
 	}
 
-	auto datahandler = DataHandler::GetSingleton();
+	auto datahandler = TKRE::GetSingleton();
 
 
 	for (auto event = *a_event; event; event = event->next) {
@@ -135,41 +135,12 @@ EventResult InputEventHandler::ProcessEvent(RE::InputEvent* const* a_event, RE::
 		uint32_t id = getOffsetButtonIDCode(button);
 
 		if (id == Settings::dodgeKey) {
-			dodge();
+			TKRE::GetSingleton()->dodge();
 		}
 
 	}
 
 	return EventResult::kContinue;
-}
-inline bool isJumping(RE::Actor* a_actor) {
-	bool result = false;
-	return a_actor->GetGraphVariableBool("bInJumpState", result) && result;
-}
-
-void InputEventHandler::dodge() {
-
-	logger::info("dodging");
-	auto pc = RE::PlayerCharacter::GetSingleton();
-	if (pc->IsSprinting() && Settings::enableTappingSprint) {
-		return;
-	}
-	const std::string dodge_event = DataHandler::GetSingleton()->GetDodgeEvent();
-	if (!dodge_event.empty() && pc->GetSitSleepState() == RE::SIT_SLEEP_STATE::kNormal && pc->GetKnockState() == RE::KNOCK_STATE_ENUM::kNormal &&
-		pc->GetFlyState() == RE::FLY_STATE::kNone && (!pc->IsSneaking() || Settings::enableSneakDodge) && !pc->IsSwimming() &&
-		!isJumping(pc) && !pc->IsInKillMove() && (pc->GetActorValue(RE::ActorValue::kStamina) >= Settings::dodgeStamina)) {
-		//DEBUG(FMT_STRING("{} Trigger!"), dodge_event);
-		bool IsDodging = false;
-		if (pc->GetGraphVariableBool("bIsDodging", IsDodging) && IsDodging) {
-			//DEBUG("Player is already dodging!");
-			return;
-		}
-		if (Settings::stepDodge) {
-			pc->SetGraphVariableInt("iStep", 2);
-		}
-		pc->SetGraphVariableFloat("TKDR_IframeDuration", Settings::iFrameDuration);  //Set invulnerable frame duration
-		pc->NotifyAnimationGraph(dodge_event);                                                    //Send TK Dodge Event
-	}
 }
 
 

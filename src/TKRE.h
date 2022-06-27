@@ -1,0 +1,52 @@
+#pragma once
+#include <xstddef>
+
+class TKRE
+{
+
+public:
+	static TKRE* GetSingleton()
+	{
+		static TKRE singleton;
+		return  std::addressof(singleton);
+	}
+
+	const std::string GetDodgeEvent() const;
+
+	void dodge();
+
+private:
+	TKRE() = default;
+
+	~TKRE() = default;
+
+	TKRE(const TKRE&) = delete;
+
+	TKRE(TKRE&&) = delete;
+
+	TKRE& operator=(const TKRE&) = delete;
+
+	TKRE& operator=(TKRE&&) = delete;
+
+};
+
+
+class Settings
+{
+public:
+	static inline std::uint32_t dodgeKey = 42;
+	static inline bool enableTappingSprint = false;
+	static inline float padThld = 0.15f;
+	static inline bool stepDodge = false;
+	static inline float dodgeStamina = 10.f;
+	static inline bool enableSneakDodge = false;
+	static inline float iFrameDuration = 0.3f;
+
+	static void readSettings();
+
+private:
+	static void ReadBoolSetting(CSimpleIniA& a_ini, const char* a_sectionName, const char* a_settingName, bool& a_setting);
+	static void ReadFloatSetting(CSimpleIniA& a_ini, const char* a_sectionName, const char* a_settingName, float& a_setting);
+	static void ReadIntSetting(CSimpleIniA& a_ini, const char* a_sectionName, const char* a_settingName, uint32_t& a_setting);
+
+};

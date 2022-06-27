@@ -1,42 +1,8 @@
-#include "DataHandler.h"
+#include "TKRE.h"
 
 
 
 #define SETTINGFILE_PATH "Data\\SKSE\\Plugins\\TK Dodge RE.ini"
-
-
-bool DataHandler::GetKeyHeldDuration(const std::uint32_t a_index, float& result) const
-{
-	auto inputMgr = RE::BSInputDeviceManager::GetSingleton();
-
-	if (inputMgr && inputMgr->GetKeyboard()->IsPressed(a_index) && inputMgr->GetKeyboard()->deviceButtons.find(a_index)->second) {
-		result = inputMgr->GetKeyboard()->deviceButtons.find(a_index)->second->heldDownSecs;
-		return true;
-	}
-
-	return false;
-}
-
-const DataHandler::MovementDirection DataHandler::GetKeyboardDireValue() const
-{
-	auto ctrlMap = RE::ControlMap::GetSingleton();
-
-	std::optional<MovementDirection> pickedDir;
-	float recordDur = 0.f;
-	for (auto dir : Directions) {
-		auto key = ctrlMap->GetMappedKey(dir.second, RE::INPUT_DEVICE::kKeyboard);
-
-		float heldDur;
-		if (GetKeyHeldDuration(key, heldDur) && (!pickedDir.has_value() || heldDur <= recordDur)) {
-			pickedDir.emplace(dir.first);
-			recordDur = heldDur;
-			//DEBUG(FMT_STRING("Get a Held Direction Key Index {:x}, Duration {}"), key, recordDur);
-		}
-	}
-
-	return pickedDir.has_value() ? pickedDir.value() : MovementDirection::kNone;
-}
-
 
 
 static float NormalAbsoluteAngle(float angle)
@@ -49,55 +15,6 @@ static float NormalAbsoluteAngle(float angle)
 		angle -= 2 * PI;
 	return angle;
 }
-
-const DataHandler::MovementDirection DataHandler::GetGamePadDireValue() const
-{
-	auto inputMgr = RE::BSInputDeviceManager::GetSingleton();
-
-	if (inputMgr && inputMgr->GetGamepad()) {
-		auto gamePad = (RE::BSWin32GamepadDevice*)(inputMgr->GetGamepad());
-		if (gamePad) {
-			//DEBUG(FMT_STRING("Current LX is {}, Current LY is {}"), gamePad->curLX, gamePad->curLY);
-
-			float dir_xy[2] = { gamePad->curLX, gamePad->curLY };
-			static const float dir_base[2] = { 0, 1.0f };
-
-			float power = sqrt(std::powf(gamePad->curLX, 2) + std::powf(gamePad->curLY, 2));
-			//DEBUG(FMT_STRING("Current Power is {}"), power);
-
-			float theta = (dir_xy[0] * dir_base[0] + dir_xy[1] * dir_base[1]) / sqrt(dir_xy[0] * dir_xy[0] + dir_xy[1] * dir_xy[1]) / sqrt(dir_base[0] * dir_base[0] + dir_base[1] * dir_base[1]);
-			theta = gamePad->curLX >= 0.f ? std::acos(theta) : -std::acos(theta);
-			//DEBUG(FMT_STRING("theta is {}"), theta);
-
-			auto dir = NormalAbsoluteAngle(theta);
-			dir /= 6.283185f;
-			dir += 0.125f;
-			dir *= 4.0f;
-			dir = fmod(dir, 4.0f);
-			dir = floor(dir);
-			dir += 1.0f;
-			//DEBUG(FMT_STRING("GamePad Direction is {}"), dir);
-
-			if (power > Settings::padThld) {
-				switch (std::int32_t(dir)) {
-				case 1:
-					return MovementDirection ::kForward;
-				case 2:
-					return MovementDirection ::kRight;
-				case 3:
-					return MovementDirection ::kBackward;
-				case 4:
-					return MovementDirection::kLeft;
-				default:
-					return MovementDirection::kNone;
-				}
-			}		
-		}
-	}
-
-	return MovementDirection::kNone;
-}
-
 #define PI 3.14159265f
 #define PI8 0.39269908f
 
@@ -142,10 +59,10 @@ inline float GetAngle(RE::NiPoint2& a, RE::NiPoint2& b)
 	return atan2(CrossProduct(a, b), DotProduct(a, b));
 }
 
-const std::string DataHandler::GetDodgeEvent() const
+const std::string TKRE::GetDodgeEvent() const
 {
 	auto playerControls = RE::PlayerControls::GetSingleton();
-	if (!playerControls || !playerControls || !playerControls->attackBlockHandler ||
+	if (!playerControls || !playerControls->attackBlockHandler ||
 		!playerControls->attackBlockHandler->inputEventHandlingEnabled || !playerControls->movementHandler || !playerControls->movementHandler->inputEventHandlingEnabled) {
 		return "";
 	}
@@ -167,6 +84,38 @@ const std::string DataHandler::GetDodgeEvent() const
 	}
 	return "TKDodgeBack";
 }
+
+inline bool isJumping(RE::Actor* a_actor)
+{
+	bool result = false;
+	return a_actor->GetGraphVariableBool("bInJumpState", result) && result;
+}
+
+void TKRE::dodge() {
+	//logger::info("dodging");
+	auto pc = RE::PlayerCharacter::GetSingleton();
+	if (pc->IsSprinting() && Settings::enableTappingSprint) {
+		return;
+	}
+	const std::string dodge_event = TKRE::GetSingleton()->GetDodgeEvent();
+	if (!dodge_event.empty() && pc->GetSitSleepState() == RE::SIT_SLEEP_STATE::kNormal && pc->GetKnockState() == RE::KNOCK_STATE_ENUM::kNormal &&
+		pc->GetFlyState() == RE::FLY_STATE::kNone && (!pc->IsSneaking() || Settings::enableSneakDodge) && !pc->IsSwimming() &&
+		!isJumping(pc) && !pc->IsInKillMove() && (pc->GetActorValue(RE::ActorValue::kStamina) >= Settings::dodgeStamina)) {
+		//DEBUG(FMT_STRING("{} Trigger!"), dodge_event);
+		bool IsDodging = false;
+		if (pc->GetGraphVariableBool("bIsDodging", IsDodging) && IsDodging) {
+			//DEBUG("Player is already dodging!");
+			return;
+		}
+		if (Settings::stepDodge) {
+			pc->SetGraphVariableInt("iStep", 2);
+		}
+		pc->SetGraphVariableFloat("TKDR_IframeDuration", Settings::iFrameDuration);  //Set invulnerable frame duration
+		pc->NotifyAnimationGraph(dodge_event);                                       //Send TK Dodge Event
+	}
+}
+
+
 void Settings::ReadIntSetting(CSimpleIniA& a_ini, const char* a_sectionName, const char* a_settingName, uint32_t& a_setting)
 {
 	const char* bFound = nullptr;

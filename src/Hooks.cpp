@@ -1,5 +1,5 @@
 #include "Hooks.h"
-#include "DataHandler.h"
+#include "TKRE.h"
 #include "InputEvents.h"
 namespace Hooks
 {
@@ -28,7 +28,7 @@ namespace Hooks
 					bStoppingSprint = true;
 				} else if (a_event->HeldDuration() < 0.3) {//TODO:ADD THIS to settings
 					if (a_event->IsUp()) {
-						InputEventHandler::dodge();
+						TKRE::GetSingleton()->dodge();
 						bStoppingSprint = false;
 					}
 					return;

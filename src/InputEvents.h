@@ -17,7 +17,6 @@ public:
 	}
 
 	static std::uint32_t GetSprintKey(RE::INPUT_DEVICE a_device);
-	static void dodge();
 
 private:
 	static InputEventHandler* GetSingleton()
