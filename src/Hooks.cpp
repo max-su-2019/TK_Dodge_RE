@@ -18,7 +18,7 @@ namespace Hooks
 	{
 		using FlagBDD = RE::PlayerCharacter::FlagBDD;
 
-		if (Settings::enableTappingSprint) {
+		if (Settings::EnableSprintKeyDodge) {
 			auto playerCharacter = RE::PlayerCharacter::GetSingleton();
 			auto userEvent = a_event->QUserEvent();
 			auto userEvents = RE::UserEvents::GetSingleton();
