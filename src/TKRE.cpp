@@ -4,17 +4,6 @@
 
 #define SETTINGFILE_PATH "Data\\SKSE\\Plugins\\TK Dodge RE.ini"
 
-
-static float NormalAbsoluteAngle(float angle)
-{
-	static const float PI = 3.1415927f;
-
-	while (angle < 0)
-		angle += 2 * PI;
-	while (angle > 2 * PI)
-		angle -= 2 * PI;
-	return angle;
-}
 #define PI 3.14159265f
 #define PI8 0.39269908f
 
@@ -92,7 +81,7 @@ inline bool canDodge(RE::PlayerCharacter* a_pc) {
 	auto attackState = a_pc->GetAttackState();
 	return a_pc->GetGraphVariableBool("bIsDodging", bIsDodging) && !bIsDodging  
 		&& ((attackState == RE::ATTACK_STATE_ENUM::kNone) || Settings::enableDodgeAttackCancel)
-		&& (!a_pc->IsSprinting() || !Settings::enableTappingSprint) 
+		&& (!a_pc->IsSprinting() || !Settings::EnableSprintKeyDodge) 
 		&& (controlMap->IsMovementControlsEnabled() && controlMap->IsFightingControlsEnabled())
 		&& (!a_pc->IsSneaking() || Settings::enableSneakDodge)
 		&& playerControls && playerControls->attackBlockHandler && playerControls->attackBlockHandler->inputEventHandlingEnabled && playerControls->movementHandler && playerControls->movementHandler->inputEventHandlingEnabled &&
@@ -161,7 +150,8 @@ void Settings::readSettings() {
 	ini.LoadFile(SETTINGFILE_PATH);
 
 	ReadIntSetting(ini, "Main", "DodgeHotkey", dodgeKey);
-	ReadBoolSetting(ini, "Main", "EnableTappingDodge", enableTappingSprint);
+	ReadBoolSetting(ini, "Main", "EnableTappingDodge", EnableSprintKeyDodge);
+	ReadBoolSetting(ini, "Main", "EnableSneakKeyDodge", EnableSneakKeyDodge);
 	ReadBoolSetting(ini, "Main", "StepDodge", stepDodge);
 	ReadBoolSetting(ini, "Main", "enableDodgeAttackCancel", enableDodgeAttackCancel);
 	ReadFloatSetting(ini, "Main", "DodgeStamina", dodgeStamina);

@@ -31,7 +31,8 @@ class Settings
 {
 public:
 	static inline std::uint32_t dodgeKey = 42;
-	static inline bool enableTappingSprint = false;
+	static inline bool EnableSprintKeyDodge = false;
+	static inline bool EnableSneakKeyDodge = false;
 	static inline bool stepDodge = false;
 	static inline float dodgeStamina = 10.f;
 	static inline bool enableSneakDodge = false;
@@ -39,6 +40,7 @@ public:
 	static inline float iFrameDuration = 0.3f;
 	static inline std::string defaultDodgeEvent = "TKDodgeBack";
 	static inline float SprintingPressDuration = 0.3f;
+	static inline float SneakingPressDuration = 0.3f;
 	static void readSettings();
 
 private:
