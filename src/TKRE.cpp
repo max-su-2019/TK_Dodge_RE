@@ -150,7 +150,7 @@ void Settings::readSettings() {
 	ini.LoadFile(SETTINGFILE_PATH);
 
 	ReadIntSetting(ini, "Main", "DodgeHotkey", dodgeKey);
-	ReadBoolSetting(ini, "Main", "EnableTappingDodge", EnableSprintKeyDodge);
+	ReadBoolSetting(ini, "Main", "EnableSprintKeyDodge", EnableSprintKeyDodge);
 	ReadBoolSetting(ini, "Main", "EnableSneakKeyDodge", EnableSneakKeyDodge);
 	ReadBoolSetting(ini, "Main", "StepDodge", stepDodge);
 	ReadBoolSetting(ini, "Main", "enableDodgeAttackCancel", enableDodgeAttackCancel);
