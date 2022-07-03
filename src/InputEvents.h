@@ -1,50 +1,47 @@
 #pragma once
 
-namespace TKDodge
+
+using EventResult = RE::BSEventNotifyControl;
+
+class InputEventHandler : public RE::BSTEventSink<RE::InputEvent*>
 {
-	using EventResult = RE::BSEventNotifyControl;
+public:
+	virtual EventResult ProcessEvent(RE::InputEvent* const* a_event, RE::BSTEventSource<RE::InputEvent*>* a_eventSource) override;
 
-	class InputEventHandler : public RE::BSTEventSink<RE::InputEvent*>
+	static void Register()
 	{
-	public:
-		virtual EventResult ProcessEvent(RE::InputEvent* const* a_event, RE::BSTEventSource<RE::InputEvent*>* a_eventSource) override;
+		logger::info("Register input event...");
+		auto deviceManager = RE::BSInputDeviceManager::GetSingleton();
+		deviceManager->AddEventSink(InputEventHandler::GetSingleton());
+		logger::info("..Done");
+	}
 
-		static void Register()
-		{
-			INFO("Start Registered!");
-			auto deviceManager = RE::BSInputDeviceManager::GetSingleton();
-			deviceManager->AddEventSink(InputEventHandler::GetSingleton());
-			INFO("Registered {}"sv, typeid(RE::InputEvent).name());
-		}
+private:
+	static InputEventHandler* GetSingleton()
+	{
+		static InputEventHandler singleton;
+		return std::addressof(singleton);
+	}
 
-		static std::uint32_t GetSprintKey(RE::INPUT_DEVICE a_device);
+	InputEventHandler() = default;
+	InputEventHandler(const InputEventHandler&) = delete;
+	InputEventHandler(InputEventHandler&&) = delete;
+	virtual ~InputEventHandler() = default;
 
-	private:
-		static InputEventHandler* GetSingleton()
-		{
-			static InputEventHandler singleton;
-			return std::addressof(singleton);
-		}
-
-		InputEventHandler() = default;
-		InputEventHandler(const InputEventHandler&) = delete;
-		InputEventHandler(InputEventHandler&&) = delete;
-		virtual ~InputEventHandler() = default;
-
-		InputEventHandler& operator=(const InputEventHandler&) = delete;
-		InputEventHandler& operator=(InputEventHandler&&) = delete;	
+	InputEventHandler& operator=(const InputEventHandler&) = delete;
+	InputEventHandler& operator=(InputEventHandler&&) = delete;	
 
 		
-		static std::uint32_t GetGamepadIndex(RE::BSWin32GamepadDevice::Key a_key);
+	static std::uint32_t GetGamepadIndex(RE::BSWin32GamepadDevice::Key a_key);
+	inline void offsetButtonEventID(RE::ButtonEvent* a_event, uint32_t& id);
+	inline uint32_t getOffsetButtonIDCode(RE::ButtonEvent* a_event);
 
-		enum : uint32_t
-		{
-			kInvalid = static_cast<uint32_t>(-1),
-			kKeyboardOffset = 0,
-			kMouseOffset = 256,
-			kGamepadOffset = 266
-		};
+	enum : uint32_t
+	{
+		kInvalid = static_cast<uint32_t>(-1),
+		kKeyboardOffset = 0,
+		kMouseOffset = 256,
+		kGamepadOffset = 266
 	};
+};
 
-
-}
