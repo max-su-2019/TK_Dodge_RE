@@ -1,13 +1,12 @@
 {
-    "name":  "TK-Dodge-RE",
-    "version-string":  "0.4.82",
-    "description":  "",
-    "license":  "MIT",
-    "dependencies":  [
-                         "spdlog"
-                     ],
-    "script-version":  "11203",
-    "build-config":  "md",
-    "build-target":  "se",
-    "install-name":  "TK Dodge RE"
+  "name": "tk_dodge_re",
+  "version-string": "1.0.0",
+  "description": "",
+  "license": "MIT",
+  "dependencies": ["spdlog"],
+  "features": {
+    "mo2-install": {
+      "description": "TK Dodge RE"
+    }
+  }
 }

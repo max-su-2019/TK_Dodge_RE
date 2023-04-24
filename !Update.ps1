@@ -1,38 +1,56 @@
+#Requires -Version 5
+
 # args
 param (
-    [ValidateSet('COPY', 'SOURCEGEN', 'DISTRIBUTE')][string]$Mode,
+    [Parameter(Mandatory)][ValidateSet('COPY', 'SOURCEGEN', 'DISTRIBUTE')][string]$Mode,
     [string]$Version,
     [string]$Path,
-    [string]$Project,
-    [string]$IsAE
+    [string]$Project
 )
+
 
 $ErrorActionPreference = "Stop"
 
+$Folder = $PSScriptRoot | Split-Path -Leaf
+$SourceExt = @('.c', '.cpp', '.cxx', '.h', '.hpp', '.hxx')
+$ConfigExt = @('.ini', '.json', '.toml')
+$env:ScriptCulture = (Get-Culture).Name -eq 'zh-CN'
+
 function Resolve-Files {
     param (
-        [Parameter(ValueFromPipeline)]
-        [string]$a_parent = $PSScriptRoot,
-
-        [Parameter()]
-        [string[]]$a_directory = @('include', 'src', 'test'),
-
-        [Parameter()]
-        [string[]]$a_extension = '*.c,*.cpp,*.cxx,*.h,*.hpp,*.hxx'
+        [Parameter(ValueFromPipeline)][string]$a_parent = $PSScriptRoot,
+        [string[]]$a_directory = @('include', 'src', 'test')
     )
     
     process {
-        Push-Location $PSScriptRoot # out of source invocation sucks
-        $_generated = ""
+        Push-Location $PSScriptRoot
+        $_generated = [System.Collections.ArrayList]::new()
 
         try {
             foreach ($directory in $a_directory) {
-                Write-Host "`t<$a_parent/$directory>"
-                Get-ChildItem "$a_parent/$directory" -Recurse -File -Include $a_extention -Exclude Version.h -ErrorAction SilentlyContinue | Resolve-Path -Relative | ForEach-Object {
-                    Write-Host "`t`t<$_>"
-                    $file = $_.SubString(2).Insert(0, "`n`t") -replace '\\', '/' # \\/\//\/\\/\\\/\\/?!?
-                    $_generated += $file
+                if (!$env:RebuildInvoke) {
+                    Write-Host "`t[$a_parent/$directory]"
                 }
+
+                Get-ChildItem "$a_parent/$directory" -Recurse -File -ErrorAction SilentlyContinue | Where-Object {
+                    ($_.Extension -in $SourceExt) -and 
+                    ($_.Name -notmatch 'Plugin.h|Version.h')
+                } | Resolve-Path -Relative | ForEach-Object {
+                    if (!$env:RebuildInvoke) {
+                        Write-Host "`t`t<$_>"
+                    }
+                    $_generated.Add("`n`t`"$($_.Substring(2) -replace '\\', '/')`"") | Out-Null
+                }
+            }               
+            
+            Get-ChildItem "$a_parent" -File -ErrorAction SilentlyContinue | Where-Object {
+                ($_.Extension -in $ConfigExt) -and 
+                ($_.Name -notmatch 'cmake|vcpkg')
+            } | Resolve-Path -Relative | ForEach-Object {
+                if (!$env:RebuildInvoke) {
+                    Write-Host "`t`t<$_>"
+                }
+                $_generated.Add("`n`t`"$($_.Substring(2) -replace '\\', '/')`"") | Out-Null
             }
         } finally {
             Pop-Location
@@ -42,103 +60,278 @@ function Resolve-Files {
     }
 }
 
-# project path
-$Folder = $PSScriptRoot | Split-Path -Leaf
-$GameBase
-$Destination
-$MO2
 
-# operation
-Write-Host "`n`t<$Folder> [$Mode] BEGIN"
-if ($Mode -eq 'COPY') { # post build event
-    $vcpkg = [IO.File]::ReadAllText("$PSScriptRoot/vcpkg.json") | ConvertFrom-Json
-    # Build Target
-    if ($IsAE -eq 'TRUE') {
-        $GameBase = $env:SkyrimAEPath
-        $MO2 = $env:MO2SkyrimAEPath
-        Write-Host "`t$Folder $Version | ANNIVERSARY EDITION"
-    } elseif ($IsAE -eq 'FALSE') {
-        $GameBase = $env:SkyrimSEPath
-        $MO2 = $env:MO2SkyrimSEPath
-        Write-Host "`t$Folder $Version | SPECIAL EDITION"
+Write-Host "`n`t<$Folder> [$Mode]"
+
+
+# @@COPY
+if ($Mode -eq 'COPY') {
+    # process newly added files
+    $BuildFolder = Get-ChildItem (Get-Item $Path).Parent.Parent.FullName "$Project.sln" -Depth 2 -File -Exclude ('*CMakeFiles*', '*CLib*')
+    $NewFiles = Get-ChildItem $BuildFolder.DirectoryName -File | Where-Object {$_.Extension -in $SourceExt}
+    if ($NewFiles) { # trigger ZERO_CHECK
+        $NewFiles | Move-Item -Destination "$PSScriptRoot/src" -Force -Confirm:$false -ErrorAction:SilentlyContinue | Out-Null
+        [IO.File]::WriteAllText("$PSScriptRoot/CMakeLists.txt", [IO.File]::ReadAllText("$PSScriptRoot/CMakeLists.txt"))
     }
 
-    # MO2 support
-    if ($MO2) {
-        $Destination = Join-Path "$MO2/mods" $vcpkg.'install-name'
-        New-Item -Type Directory "$Destination/SKSE/Plugins" -Force | Out-Null
-    } else {
-        Add-Type -AssemblyName Microsoft.VisualBasic | Out-Null
-        $Result = [Microsoft.VisualBasic.Interaction]::MsgBox("$Project has been built`n`nCopy to game folder?", 52, $Project)
-        if ($Result -eq 6) {
-            $Destination = "$GameBase/Data" 
-            New-Item -Type Directory "$Destination/SKSE/Plugins" -Force | Out-Null
-        } else {
-            Invoke-Item $Path
-            Exit
+    # Build Target
+    Write-Host "`t$Folder $Version"
+    $vcpkg = [IO.File]::ReadAllText("$PSScriptRoot/vcpkg.json") | ConvertFrom-Json
+    $Install = $vcpkg.'features'.'mo2-install'.'description'
+    $ProjectCMake = [IO.File]::ReadAllText("$PSScriptRoot/CMakeLists.txt")
+    $OldVersion = [regex]::match($ProjectCMake, '(?s)(?:(?<=\sVERSION\s)(.*?)(?=\s+))').Groups[1].Value
+
+
+    function Copy-Mod {
+        param (
+            $Data
+        )
+
+        New-Item -Type Directory "$Data/SKSE/Plugins" -Force | Out-Null
+
+        # binary
+        Copy-Item "$Path/$Project.dll" "$Data/SKSE/Plugins/$Project.dll" -Force
+        $Message.Text += "`r`n- Binary files copied"
+
+        # configs
+        Get-ChildItem $PSScriptRoot | Where-Object {
+            ($_.Extension -in $ConfigExt) -and 
+            ($_.Name -notmatch 'CMake|vcpkg')
+        } | ForEach-Object {
+            Copy-Item $_.FullName "$Data/SKSE/Plugins/$($_.Name)" -Force
+            $Message.Text += "`r`n- Configuration files copied"
+        }
+
+        # shockwave
+        if (Test-Path "$PSScriptRoot/Interface/*.swf" -PathType Leaf) {
+            New-Item -Type Directory "$Data/Interface" -Force | Out-Null
+            Copy-Item "$PSScriptRoot/Interface" "$Data" -Recurse -Force
+            $Message.Text += "`r`n- Shockwave files copied"
+        }
+
+        # papyrus
+        if (Test-Path "$PSScriptRoot/Scripts/*.pex" -PathType Leaf) {
+            New-Item -Type Directory "$Data/Scripts" -Force | Out-Null
+            xcopy.exe "$PSScriptRoot/Scripts" "$Data/Scripts" /C /I /S /E /Y
+            $Message.Text += "`r`n- Papyrus scripts copied"
+        }
+        if (Test-Path "$PSScriptRoot/Scripts/Source/*.psc" -PathType Leaf) {
+            New-Item -Type Directory "$Data/Scripts/Source" -Force | Out-Null
+            xcopy.exe "$PSScriptRoot/Scripts/Source" "$Data/Scripts/Source" /C /I /S /E /Y
+            $Message.Text += "`r`n- Papyrus scripts copied"
         }
     }
-       
-    # binary
-    Write-Host "`tCopying binary file..."
-    Copy-Item "$Path/$Project.dll" "$Destination/SKSE/Plugins/$Project.dll" -Force
-    Write-Host "`tDone!"
 
-    # configs
-    Get-ChildItem $PSScriptRoot -Recurse | Where-Object {($_.extension -in '.toml', '.json', '.toml') -and ($_.Name -ne 'vcpkg.json')} | ForEach-Object {
-        Write-Host "`tCopying $($_.Name)"
-        Copy-Item $_.FullName "$Destination/SKSE/Plugins/$($_.Name)" -Force
+
+	Add-Type -AssemblyName Microsoft.VisualBasic
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+
+    [System.Windows.Forms.Application]::EnableVisualStyles()
+    $MsgBox = New-Object System.Windows.Forms.Form -Property @{
+        TopLevel = $true
+        ClientSize = '350, 305'
+        Text = $Project
+        StartPosition = 'CenterScreen'
+        FormBorderStyle = 'FixedDialog'
+        MaximizeBox = $false
+        MinimizeBox = $false
+        Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Regular)
     }
-
-    # papyrus
-    if (Test-Path "$PSScriptRoot/Scripts/Source/*.psc" -PathType Leaf) {
-        Add-Type -AssemblyName Microsoft.VisualBasic | Out-Null
-        $Result = [Microsoft.VisualBasic.Interaction]::MsgBox('Build papyrus scripts?', 52, 'Papyrus')
-        if ($Result -eq 6) {
-            Write-Host "`tBuilding papyrus scripts..."
-            New-Item -Type Directory "$Destination/Scripts" -Force | Out-Null
-            & "$GameBase/Papyrus Compiler/PapyrusCompiler.exe" "$PSScriptRoot/Scripts/Source" -f="$GameBase/Papyrus Compiler/TESV_Papyrus_Flags.flg" -i="$GameBase/Data/Scripts/Source;./Scripts/Source" -o="$PSScriptRoot/Scripts" -a
-
-            Write-Host "`tCopying papyrus scripts..."
-            Copy-Item "$PSScriptRoot/Scripts" "$Destination" -Recurse -Force
-            Remove-Item "$Destination/Scripts/Source" -Force -Confirm:$false -ErrorAction Ignore
-            Write-Host "`tDone!"
+    
+    $Message = New-Object System.Windows.Forms.TextBox -Property @{
+        ClientSize = '225, 150'
+        Location = New-Object System.Drawing.Point(20, 20)
+        Multiline = $true
+        ReadOnly = $true
+        Text = "- [$Project - $OldVersion] has been built."
+        
+    }
+    
+    $BtnCopyMO2 = New-Object System.Windows.Forms.Button -Property @{
+        ClientSize = '70, 50'
+        Text = 'Copy to MO2'
+        Location = New-Object System.Drawing.Point(260, 19)
+        BackColor = 'Cyan'
+        Add_Click = {
+            foreach ($runtime in @("$($env:MO2SkyrimAEPath)/mods", "$($env:MO2SkyrimSEPath)/mods", "$($env:MO2SkyrimVRPath)/mods")) {
+                if (Test-Path $runtime -PathType Container) {
+                    Copy-Mod "$runtime/$Install"
+                }
+            }
+            $Message.Text += "`r`n- Copied to MO2."
         }
     }
     
-    # shockwave
-    if (Test-Path "$PSScriptRoot/Interface/*.swf" -PathType Leaf) {
-        Write-Host "`tCopying shockwave files..."
-        New-Item -Type Directory "$Destination/Interface" -Force | Out-Null
-        Copy-Item "$PSScriptRoot/Interface" "$Destination" -Recurse -Force
-        Write-Host "`tDone!"
-    }
-
-    # Check CMake VERSION
-    $OutputVersion
-    $OriginalVersion = $vcpkg.'version-string'
-    $BuildFolder = Get-ChildItem ((Get-Item $Path).Parent.Parent.FullName) "$Project.sln" -Recurse -File
-    [IO.File]::ReadAllLines("$($BuildFolder.Directory)/include/Version.h") | ForEach-Object {
-        if ($_.Trim().StartsWith('inline constexpr auto NAME = "')) {
-            $OutputVersion = $_.Trim().Substring(30, 5)
-            if ($OutputVersion -ne $vcpkg.'version-string') {
-                Write-Host "`tVersionInfo changed! Updating CMakeLists..."  
-
-                $CMakeLists = [IO.File]::ReadAllText("$PSScriptRoot/CMakeLists.txt") -replace "VERSION\s$($vcpkg.'version-string')", "VERSION $OutputVersion"
-                [IO.File]::WriteAllText("$PSScriptRoot/CMakeLists.txt", $CMakeLists)
-
-                $vcpkg.'version-string' = $OutputVersion
-                $vcpkg = $vcpkg | ConvertTo-Json
-                [IO.File]::WriteAllText("$PSScriptRoot/vcpkg.json", $vcpkg)
-                Write-Host "`tDone  "
-                
-                Add-Type -AssemblyName Microsoft.VisualBasic | Out-Null
-                [Microsoft.VisualBasic.Interaction]::MsgBox("$Project has been changed from $($OriginalVersion) to $($OutputVersion)`n`nThis update will be in effect after next succesful build", 48, 'Version Update')
-                Exit
+    $BtnCopyData = New-Object System.Windows.Forms.Button -Property @{
+        ClientSize = '70, 50'
+        Text = 'Copy to Data'
+        Location = New-Object System.Drawing.Point(260, 74)
+        Add_Click = {
+            foreach ($runtime in @("$($env:SkyrimAEPath)/data", "$($env:SkyrimSEPath)/data", "$($env:SkyrimVRPath)/data")) {
+                if (Test-Path $runtime -PathType Container) {
+                    Copy-Mod "$runtime"
+                }
             }
+            $Message.Text += "`r`n- Copied to game data."
         }
     }
-} elseif ($Mode -eq 'SOURCEGEN') { # cmake sourcelist generation
+    
+    $BtnRemoveData = New-Object System.Windows.Forms.Button -Property @{
+        ClientSize = '70, 50'
+        Text = 'Remove in Data'
+        Location = New-Object System.Drawing.Point(260, 129)
+        Add_Click = {
+            foreach ($runtime in @("$($env:SkyrimAEPath)/data", "$($env:SkyrimSEPath)/data", "$($env:SkyrimVRPath)/data")) {
+                if (Test-Path "$runtime/SKSE/Plugins/$Project.dll" -PathType Leaf) {
+                    Remove-Item "$runtime/SKSE/Plugins/$Project.dll" -Force -Confirm:$false -ErrorAction:SilentlyContinue | Out-Null
+                }
+            }
+            $Message.Text += "`r`n- Removed from game data."
+        }
+    }
+    
+    $BtnOpenFolder = New-Object System.Windows.Forms.Button -Property @{
+        ClientSize = '70, 50'
+        Text = 'Show in Explorer'
+        Location = New-Object System.Drawing.Point(260, 185)
+        BackColor = 'Yellow'
+        Add_Click = {
+            Invoke-Item $Path
+        }
+    }
+    
+    $BtnLaunchSKSEAE = New-Object System.Windows.Forms.Button -Property @{
+        ClientSize = '70, 50'
+        Text = 'SKSE (AE)'
+        Location = New-Object System.Drawing.Point(20, 185)
+        Add_Click = {
+            Push-Location $env:SkyrimAEPath
+            Start-Process ./SKSE64_loader.exe
+            Pop-Location
+
+            $Message.Text += "`r`n- SKSE (AE) Launched."
+        }
+    }
+    if (!(Test-Path "$env:SkyrimAEPath/skse64_loader.exe" -PathType Leaf)) {
+        $BtnLaunchSKSEAE.Enabled = $false
+    }
+
+    $BtnLaunchSKSESE = New-Object System.Windows.Forms.Button -Property @{
+        ClientSize = '70, 50'
+        Text = 'SKSE (SE)'
+        Location = New-Object System.Drawing.Point(100, 185)
+        Add_Click = {
+            Push-Location $env:SkyrimSEPath
+            Start-Process ./SKSE64_loader.exe
+            Pop-Location
+
+            $Message.Text += "`r`n- SKSE (SE) Launched."
+        }
+    }
+    if (!(Test-Path "$env:SkyrimSEPath/skse64_loader.exe" -PathType Leaf)) {
+        $BtnLaunchSKSESE.Enabled = $false
+    }
+ 
+    $BtnLaunchSKSEVR = New-Object System.Windows.Forms.Button -Property @{
+        ClientSize = '70, 50'
+        Text = 'SKSE (VR)'
+        Location = New-Object System.Drawing.Point(180, 185)
+        Add_Click = {
+            Push-Location $env:SkyrimVRPath
+            Start-Process ./SKSE64_loader.exe
+            Pop-Location
+
+            $Message.Text += "`r`n- SKSE (VR) Launched."
+        }
+    }
+    if (!(Test-Path "$env:SkyrimVRPath/skse64_loader.exe" -PathType Leaf)) {
+        $BtnLaunchSKSEVR.Enabled = $false
+    }
+    
+    $BtnBuildPapyrus = New-Object System.Windows.Forms.Button -Property @{
+        ClientSize = '70, 50'
+        Text = 'Build Papyrus'
+        Location = New-Object System.Drawing.Point(20, 240)
+        Add_Click = {
+            $BtnBuildPapyrus.Text = 'Compiling...'
+            
+            $Invocation = "`"$($env:SkyrimSEPath)/Papyrus Compiler/PapyrusCompiler.exe`" `"$PSScriptRoot/Scripts/Source`" -f=`"$env:SkyrimSEPath/Papyrus Compiler/TESV_Papyrus_Flags.flg`" -i=`"$env:SkyrimSEPath/Data/Scripts/Source;$PSScriptRoot/Scripts;$PSScriptRoot/Scripts/Source`" -o=`"$PSScriptRoot/Scripts`" -a -op -enablecache -t=`"4`""
+            Start-Process cmd.exe -ArgumentList "/k $Invocation && pause && exit"
+            
+            $BtnBuildPapyrus.Text = 'Build Papyrus'
+        }
+    }
+    
+    $BtnChangeVersion = New-Object System.Windows.Forms.Button -Property @{
+        ClientSize = '70, 50'
+        Text = 'Version'
+        Location = New-Object System.Drawing.Point(100, 240)
+        Add_Click = {
+            $NewVersion = $null
+            while ($OldVersion -and !$NewVersion) {
+                $NewVersion = [Microsoft.VisualBasic.Interaction]::InputBox("Input the new versioning for $Project", 'Versioning', $OldVersion)
+            }
+            $ProjectCMake = $ProjectCMake -replace "VERSION\s$OldVersion", "VERSION $NewVersion"
+            $vcpkg.'version-string' = $NewVersion
+
+            [IO.File]::WriteAllText("$PSScriptRoot/CMakeLists.txt", $ProjectCMake)
+            $vcpkg = $vcpkg | ConvertTo-Json -Depth 9
+            [IO.File]::WriteAllText("$PSScriptRoot/vcpkg.json", $vcpkg)
+
+
+            $Message.Text += "`r`n- Version changed $OldVersion -> $NewVersion"
+            $OldVersion = $NewVersion
+        }
+    }
+    
+    $BtnPublish = New-Object System.Windows.Forms.Button -Property @{
+        ClientSize = '70, 50'
+        Text = 'Publish Mod'
+        Location = New-Object System.Drawing.Point(180, 240)
+        Add_Click = {
+            $BtnPublish.Text = 'Zipping...'
+
+            Copy-Mod "$PSScriptRoot/Tmp/Data"
+            Compress-Archive "$PSScriptRoot/Tmp/Data/*" "$Path/$($Project)-$(($OldVersion).Replace('.', '-'))" -Force
+            Remove-Item "$PSScriptRoot/Tmp" -Recurse -Force -Confirm:$false -ErrorAction:SilentlyContinue | Out-Null
+            Invoke-Item $Path
+
+            $Message.Text += "`r`n- Mod files zipped & ready to go."
+            $BtnPublish.Text = 'Publish Mod'
+        }
+    }
+    
+    
+    $BtnExit = New-Object System.Windows.Forms.Button -Property @{
+        ClientSize = '70, 50'
+        Text = 'Exit'
+        Location = New-Object System.Drawing.Point(260, 240)
+        Add_Click = {
+            $MsgBox.Close()
+        }
+    }
+                
+    $MsgBox.Controls.Add($Message)
+    $MsgBox.Controls.Add($BtnCopyData)
+    $MsgBox.Controls.Add($BtnCopyMO2)
+    $MsgBox.Controls.Add($BtnRemoveData)
+    $MsgBox.Controls.Add($BtnOpenFolder)
+    $MsgBox.Controls.Add($BtnExit)
+    $MsgBox.Controls.Add($BtnBuildPapyrus)
+    $MsgBox.Controls.Add($BtnChangeVersion)
+    $MsgBox.Controls.Add($BtnPublish)
+    $MsgBox.Controls.Add($BtnLaunchSKSEAE)
+    $MsgBox.Controls.Add($BtnLaunchSKSESE)
+    $MsgBox.Controls.Add($BtnLaunchSKSEVR)
+    
+    $MsgBox.ShowDialog() | Out-Null
+    Exit
+}
+
+
+# @@SOURCEGEN
+if ($Mode -eq 'SOURCEGEN') {
     Write-Host "`tGenerating CMake sourcelist..."
     Remove-Item "$Path/sourcelist.cmake" -Force -Confirm:$false -ErrorAction Ignore
 
@@ -149,51 +342,28 @@ if ($Mode -eq 'COPY') { # post build event
     }
     $generated += "`n)"
     [IO.File]::WriteAllText("$Path/sourcelist.cmake", $generated)
+}
 
-    if ($Version) {
-        # update vcpkg.json accordinly
-        $vcpkg = [IO.File]::ReadAllText("$PSScriptRoot/vcpkg.json") | ConvertFrom-Json
-        $vcpkg.'version-string' = $Version    
-        
-        if ($env:RebuildInvoke) {
-            if ($vcpkg | Get-Member script-version) {
-                $vcpkg.'script-version' = $env:DKScriptVersion
-            } else {
-                $vcpkg | Add-Member -Name 'script-version' -Value $env:DKScriptVersion -MemberType NoteProperty
-            }
-            if ($vcpkg | Get-Member build-config) {
-                $vcpkg.'build-config' = $env:BuildConfig
-            } else {
-                $vcpkg | Add-Member -Name 'build-config' -Value $env:BuildConfig -MemberType NoteProperty
-            }
-            if ($vcpkg | Get-Member build-target) {
-                $vcpkg.'build-target' = $env:BuildTarget
-            } else {
-                $vcpkg | Add-Member -Name 'build-target' -Value $env:BuildTarget -MemberType NoteProperty
-            }
-            if (-not ($vcpkg | Get-Member install-name)) {
-                $vcpkg | Add-Member -Name 'install-name' -Value $Folder -MemberType NoteProperty
-            }
-        }
-        $vcpkg = $vcpkg | ConvertTo-Json
-        [IO.File]::WriteAllText("$PSScriptRoot/vcpkg.json", $vcpkg) # damn you encoding
-    }
-} elseif ($Mode -eq 'DISTRIBUTE') { # update script to every project
-    ((Get-ChildItem 'Plugins' -Directory -Recurse) + (Get-ChildItem 'Library' -Directory -Recurse)) | Resolve-Path -Relative | ForEach-Object {
-        if (Test-Path "$_/CMakeLists.txt" -PathType Leaf) {
-            Write-Host "`tUpdated <$_>"
-            Robocopy.exe "$PSScriptRoot" "$_" '!Update.ps1' /MT /NJS /NFL /NDL /NJH
-        }
+
+# @@DISTRIBUTE
+if ($Mode -eq 'DISTRIBUTE') { # update script to every project
+    Get-ChildItem "$PSScriptRoot/*/*" -Directory | Where-Object {
+        $_.Name -notin @('vcpkg', 'Build', '.git', '.vs') -and
+        (Test-Path "$_/CMakeLists.txt" -PathType Leaf)
+    } | ForEach-Object {
+        Write-Host "`tUpdated <$_>"
+        Robocopy.exe "$PSScriptRoot" "$_" '!Update.ps1' /MT /NJS /NFL /NDL /NJH | Out-Null
     }
 }
 
-Write-Host "`t<$Folder> [$Mode] DONE"
+
+
 
 # SIG # Begin signature block
-# MIIR2wYJKoZIhvcNAQcCoIIRzDCCEcgCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
+# MIIboQYJKoZIhvcNAQcCoIIbkjCCG44CAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUyIHw9odQ5oHlqbxr6bcnkKUT
-# 8pSggg1BMIIDBjCCAe6gAwIBAgIQbBejp82dcLdHI5AVyyqyxzANBgkqhkiG9w0B
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUL10O38us2rLaFkAAv/CaJq/f
+# 2nKgghYXMIIDBjCCAe6gAwIBAgIQbBejp82dcLdHI5AVyyqyxzANBgkqhkiG9w0B
 # AQsFADAbMRkwFwYDVQQDDBBES1NjcmlwdFNlbGZDZXJ0MB4XDTIxMTIwMzExMTgx
 # OVoXDTIyMTIwMzExMzgxOVowGzEZMBcGA1UEAwwQREtTY3JpcHRTZWxmQ2VydDCC
 # ASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAKCLTioNBJsXmC6rmQ9af4DL
@@ -209,81 +379,133 @@ Write-Host "`t<$Folder> [$Mode] DONE"
 # GhzAMGe7roDCe8+Q4YFAKh8HH3Fz70eJQnBCNewJfiI0tVBav/bCaPfjWKdlYMoi
 # LsCHVYYzLfmZWLN6fhWY4NT1F3OBCoDvqvBTUupsknzIQIkR0kl0hvyiTKuTgKmZ
 # xJoYX3MvXEBZMs/WUaTDXOt4tLe7viye6T2RUeILyJiuq5PDzM6X1tUbgQEXOFhQ
-# dOHtYjGwteueqI+Usmp3cDCCBP4wggPmoAMCAQICEA1CSuC+Ooj/YEAhzhQA8N0w
-# DQYJKoZIhvcNAQELBQAwcjELMAkGA1UEBhMCVVMxFTATBgNVBAoTDERpZ2lDZXJ0
-# IEluYzEZMBcGA1UECxMQd3d3LmRpZ2ljZXJ0LmNvbTExMC8GA1UEAxMoRGlnaUNl
-# cnQgU0hBMiBBc3N1cmVkIElEIFRpbWVzdGFtcGluZyBDQTAeFw0yMTAxMDEwMDAw
-# MDBaFw0zMTAxMDYwMDAwMDBaMEgxCzAJBgNVBAYTAlVTMRcwFQYDVQQKEw5EaWdp
-# Q2VydCwgSW5jLjEgMB4GA1UEAxMXRGlnaUNlcnQgVGltZXN0YW1wIDIwMjEwggEi
-# MA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDC5mGEZ8WK9Q0IpEXKY2tR1zoR
-# Qr0KdXVNlLQMULUmEP4dyG+RawyW5xpcSO9E5b+bYc0VkWJauP9nC5xj/TZqgfop
-# +N0rcIXeAhjzeG28ffnHbQk9vmp2h+mKvfiEXR52yeTGdnY6U9HR01o2j8aj4S8b
-# Ordh1nPsTm0zinxdRS1LsVDmQTo3VobckyON91Al6GTm3dOPL1e1hyDrDo4s1SPa
-# 9E14RuMDgzEpSlwMMYpKjIjF9zBa+RSvFV9sQ0kJ/SYjU/aNY+gaq1uxHTDCm2mC
-# tNv8VlS8H6GHq756WwogL0sJyZWnjbL61mOLTqVyHO6fegFz+BnW/g1JhL0BAgMB
-# AAGjggG4MIIBtDAOBgNVHQ8BAf8EBAMCB4AwDAYDVR0TAQH/BAIwADAWBgNVHSUB
-# Af8EDDAKBggrBgEFBQcDCDBBBgNVHSAEOjA4MDYGCWCGSAGG/WwHATApMCcGCCsG
-# AQUFBwIBFhtodHRwOi8vd3d3LmRpZ2ljZXJ0LmNvbS9DUFMwHwYDVR0jBBgwFoAU
-# 9LbhIB3+Ka7S5GGlsqIlssgXNW4wHQYDVR0OBBYEFDZEho6kurBmvrwoLR1ENt3j
-# anq8MHEGA1UdHwRqMGgwMqAwoC6GLGh0dHA6Ly9jcmwzLmRpZ2ljZXJ0LmNvbS9z
-# aGEyLWFzc3VyZWQtdHMuY3JsMDKgMKAuhixodHRwOi8vY3JsNC5kaWdpY2VydC5j
-# b20vc2hhMi1hc3N1cmVkLXRzLmNybDCBhQYIKwYBBQUHAQEEeTB3MCQGCCsGAQUF
-# BzABhhhodHRwOi8vb2NzcC5kaWdpY2VydC5jb20wTwYIKwYBBQUHMAKGQ2h0dHA6
-# Ly9jYWNlcnRzLmRpZ2ljZXJ0LmNvbS9EaWdpQ2VydFNIQTJBc3N1cmVkSURUaW1l
-# c3RhbXBpbmdDQS5jcnQwDQYJKoZIhvcNAQELBQADggEBAEgc3LXpmiO85xrnIA6O
-# Z0b9QnJRdAojR6OrktIlxHBZvhSg5SeBpU0UFRkHefDRBMOG2Tu9/kQCZk3taaQP
-# 9rhwz2Lo9VFKeHk2eie38+dSn5On7UOee+e03UEiifuHokYDTvz0/rdkd2NfI1Jp
-# g4L6GlPtkMyNoRdzDfTzZTlwS/Oc1np72gy8PTLQG8v1Yfx1CAB2vIEO+MDhXM/E
-# EXLnG2RJ2CKadRVC9S0yOIHa9GCiurRS+1zgYSQlT7LfySmoc0NR2r1j1h9bm/cu
-# G08THfdKDXF+l7f0P4TrweOjSaH6zqe/Vs+6WXZhiV9+p7SOZ3j5NpjhyyjaW4em
-# ii8wggUxMIIEGaADAgECAhAKoSXW1jIbfkHkBdo2l8IVMA0GCSqGSIb3DQEBCwUA
-# MGUxCzAJBgNVBAYTAlVTMRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsT
-# EHd3dy5kaWdpY2VydC5jb20xJDAiBgNVBAMTG0RpZ2lDZXJ0IEFzc3VyZWQgSUQg
-# Um9vdCBDQTAeFw0xNjAxMDcxMjAwMDBaFw0zMTAxMDcxMjAwMDBaMHIxCzAJBgNV
-# BAYTAlVTMRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdp
-# Y2VydC5jb20xMTAvBgNVBAMTKERpZ2lDZXJ0IFNIQTIgQXNzdXJlZCBJRCBUaW1l
-# c3RhbXBpbmcgQ0EwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC90DLu
-# S82Pf92puoKZxTlUKFe2I0rEDgdFM1EQfdD5fU1ofue2oPSNs4jkl79jIZCYvxO8
-# V9PD4X4I1moUADj3Lh477sym9jJZ/l9lP+Cb6+NGRwYaVX4LJ37AovWg4N4iPw7/
-# fpX786O6Ij4YrBHk8JkDbTuFfAnT7l3ImgtU46gJcWvgzyIQD3XPcXJOCq3fQDpc
-# t1HhoXkUxk0kIzBdvOw8YGqsLwfM/fDqR9mIUF79Zm5WYScpiYRR5oLnRlD9lCos
-# p+R1PrqYD4R/nzEU1q3V8mTLex4F0IQZchfxFwbvPc3WTe8GQv2iUypPhR3EHTyv
-# z9qsEPXdrKzpVv+TAgMBAAGjggHOMIIByjAdBgNVHQ4EFgQU9LbhIB3+Ka7S5GGl
-# sqIlssgXNW4wHwYDVR0jBBgwFoAUReuir/SSy4IxLVGLp6chnfNtyA8wEgYDVR0T
-# AQH/BAgwBgEB/wIBADAOBgNVHQ8BAf8EBAMCAYYwEwYDVR0lBAwwCgYIKwYBBQUH
-# AwgweQYIKwYBBQUHAQEEbTBrMCQGCCsGAQUFBzABhhhodHRwOi8vb2NzcC5kaWdp
-# Y2VydC5jb20wQwYIKwYBBQUHMAKGN2h0dHA6Ly9jYWNlcnRzLmRpZ2ljZXJ0LmNv
-# bS9EaWdpQ2VydEFzc3VyZWRJRFJvb3RDQS5jcnQwgYEGA1UdHwR6MHgwOqA4oDaG
-# NGh0dHA6Ly9jcmw0LmRpZ2ljZXJ0LmNvbS9EaWdpQ2VydEFzc3VyZWRJRFJvb3RD
-# QS5jcmwwOqA4oDaGNGh0dHA6Ly9jcmwzLmRpZ2ljZXJ0LmNvbS9EaWdpQ2VydEFz
-# c3VyZWRJRFJvb3RDQS5jcmwwUAYDVR0gBEkwRzA4BgpghkgBhv1sAAIEMCowKAYI
-# KwYBBQUHAgEWHGh0dHBzOi8vd3d3LmRpZ2ljZXJ0LmNvbS9DUFMwCwYJYIZIAYb9
-# bAcBMA0GCSqGSIb3DQEBCwUAA4IBAQBxlRLpUYdWac3v3dp8qmN6s3jPBjdAhO9L
-# hL/KzwMC/cWnww4gQiyvd/MrHwwhWiq3BTQdaq6Z+CeiZr8JqmDfdqQ6kw/4stHY
-# fBli6F6CJR7Euhx7LCHi1lssFDVDBGiy23UC4HLHmNY8ZOUfSBAYX4k4YU1iRiSH
-# Y4yRUiyvKYnleB/WCxSlgNcSR3CzddWThZN+tpJn+1Nhiaj1a5bA9FhpDXzIAbG5
-# KHW3mWOFIoxhynmUfln8jA/jb7UBJrZspe6HUSHkWGCbugwtK22ixH67xCUrRwII
-# fEmuE7bhfEJCKMYYVs9BNLZmXbZ0e/VWMyIvIjayS6JKldj1po5SMYIEBDCCBAAC
-# AQEwLzAbMRkwFwYDVQQDDBBES1NjcmlwdFNlbGZDZXJ0AhBsF6OnzZ1wt0cjkBXL
-# KrLHMAkGBSsOAwIaBQCgeDAYBgorBgEEAYI3AgEMMQowCKACgAChAoAAMBkGCSqG
-# SIb3DQEJAzEMBgorBgEEAYI3AgEEMBwGCisGAQQBgjcCAQsxDjAMBgorBgEEAYI3
-# AgEVMCMGCSqGSIb3DQEJBDEWBBQqnYisw/92tz41NvNRj7BAFWVF5jANBgkqhkiG
-# 9w0BAQEFAASCAQBJdIZj7QvhAk+KLv/2skIiuK/arjTwuV/znDG3YtIw/y//WM8P
-# GzzTQ97DKaax0YwS0oLgUJf30FYvwrnod1Ro/EOXlayxpTTTsoX6hV3een69xIg1
-# nQC/aq8v4hNYr/2A4D+/KmgJf51ly1EhZrj6XMDAnUuaULXADnp6RM+JL+yhmPnL
-# OKeIF6TyKisl/TGYIuzgCcyE5DvCf9PyephLWUdq6lJbI2vgccxyloyoxc5FNVb2
-# Pm2fnrUpf/DZv/tGb7p0iJJNGU9Nl69c28qFJJzew0hIXQxvu0C32GVMzvdigwoI
-# e72BwzxHG8o+mM/JPnUzm9EOXxL89a0eJutEoYICMDCCAiwGCSqGSIb3DQEJBjGC
-# Ah0wggIZAgEBMIGGMHIxCzAJBgNVBAYTAlVTMRUwEwYDVQQKEwxEaWdpQ2VydCBJ
-# bmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5jb20xMTAvBgNVBAMTKERpZ2lDZXJ0
-# IFNIQTIgQXNzdXJlZCBJRCBUaW1lc3RhbXBpbmcgQ0ECEA1CSuC+Ooj/YEAhzhQA
-# 8N0wDQYJYIZIAWUDBAIBBQCgaTAYBgkqhkiG9w0BCQMxCwYJKoZIhvcNAQcBMBwG
-# CSqGSIb3DQEJBTEPFw0yMTEyMDMxMzI5NTBaMC8GCSqGSIb3DQEJBDEiBCChf5Dy
-# SG2tyE87hDWc9ZP/scg0PZK8qspf1iAiBubCFzANBgkqhkiG9w0BAQEFAASCAQC1
-# SfMy2hQkFLIZd+sQXp6XQi70y7V01xZmpv6Pxck/rFGZsBVZjpDLDRJ9kzvCr0k4
-# JdDmdAycHjhQ8aKVtkkzIlE+HpRgh5bPnuURR3THKB3dm63BZrLDEyy1F2dpp0+Z
-# blR9KoDh6v3KthMiOkk0iadr8g5pknt9/zD2eM9ZhYWxfYp1vze2aNLxFeLysDo2
-# zCR7/XNcu0ciwqzBp7sa7CJclSK1Wvk9GX7Q7ylMj/jVs2UlH1r1Jr+jckQMbRI+
-# FtCSkjnA0L2gZyU8dxMVEDtV2gpHoeNB5a+MEw4cCK718LOzFKc20dElUi7DcsuM
-# G6tlK7iraABETgQEHqSC
+# dOHtYjGwteueqI+Usmp3cDCCBY0wggR1oAMCAQICEA6bGI750C3n79tQ4ghAGFow
+# DQYJKoZIhvcNAQEMBQAwZTELMAkGA1UEBhMCVVMxFTATBgNVBAoTDERpZ2lDZXJ0
+# IEluYzEZMBcGA1UECxMQd3d3LmRpZ2ljZXJ0LmNvbTEkMCIGA1UEAxMbRGlnaUNl
+# cnQgQXNzdXJlZCBJRCBSb290IENBMB4XDTIyMDgwMTAwMDAwMFoXDTMxMTEwOTIz
+# NTk1OVowYjELMAkGA1UEBhMCVVMxFTATBgNVBAoTDERpZ2lDZXJ0IEluYzEZMBcG
+# A1UECxMQd3d3LmRpZ2ljZXJ0LmNvbTEhMB8GA1UEAxMYRGlnaUNlcnQgVHJ1c3Rl
+# ZCBSb290IEc0MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAv+aQc2je
+# u+RdSjwwIjBpM+zCpyUuySE98orYWcLhKac9WKt2ms2uexuEDcQwH/MbpDgW61bG
+# l20dq7J58soR0uRf1gU8Ug9SH8aeFaV+vp+pVxZZVXKvaJNwwrK6dZlqczKU0RBE
+# EC7fgvMHhOZ0O21x4i0MG+4g1ckgHWMpLc7sXk7Ik/ghYZs06wXGXuxbGrzryc/N
+# rDRAX7F6Zu53yEioZldXn1RYjgwrt0+nMNlW7sp7XeOtyU9e5TXnMcvak17cjo+A
+# 2raRmECQecN4x7axxLVqGDgDEI3Y1DekLgV9iPWCPhCRcKtVgkEy19sEcypukQF8
+# IUzUvK4bA3VdeGbZOjFEmjNAvwjXWkmkwuapoGfdpCe8oU85tRFYF/ckXEaPZPfB
+# aYh2mHY9WV1CdoeJl2l6SPDgohIbZpp0yt5LHucOY67m1O+SkjqePdwA5EUlibaa
+# RBkrfsCUtNJhbesz2cXfSwQAzH0clcOP9yGyshG3u3/y1YxwLEFgqrFjGESVGnZi
+# fvaAsPvoZKYz0YkH4b235kOkGLimdwHhD5QMIR2yVCkliWzlDlJRR3S+Jqy2QXXe
+# eqxfjT/JvNNBERJb5RBQ6zHFynIWIgnffEx1P2PsIV/EIFFrb7GrhotPwtZFX50g
+# /KEexcCPorF+CiaZ9eRpL5gdLfXZqbId5RsCAwEAAaOCATowggE2MA8GA1UdEwEB
+# /wQFMAMBAf8wHQYDVR0OBBYEFOzX44LScV1kTN8uZz/nupiuHA9PMB8GA1UdIwQY
+# MBaAFEXroq/0ksuCMS1Ri6enIZ3zbcgPMA4GA1UdDwEB/wQEAwIBhjB5BggrBgEF
+# BQcBAQRtMGswJAYIKwYBBQUHMAGGGGh0dHA6Ly9vY3NwLmRpZ2ljZXJ0LmNvbTBD
+# BggrBgEFBQcwAoY3aHR0cDovL2NhY2VydHMuZGlnaWNlcnQuY29tL0RpZ2lDZXJ0
+# QXNzdXJlZElEUm9vdENBLmNydDBFBgNVHR8EPjA8MDqgOKA2hjRodHRwOi8vY3Js
+# My5kaWdpY2VydC5jb20vRGlnaUNlcnRBc3N1cmVkSURSb290Q0EuY3JsMBEGA1Ud
+# IAQKMAgwBgYEVR0gADANBgkqhkiG9w0BAQwFAAOCAQEAcKC/Q1xV5zhfoKN0Gz22
+# Ftf3v1cHvZqsoYcs7IVeqRq7IviHGmlUIu2kiHdtvRoU9BNKei8ttzjv9P+Aufih
+# 9/Jy3iS8UgPITtAq3votVs/59PesMHqai7Je1M/RQ0SbQyHrlnKhSLSZy51PpwYD
+# E3cnRNTnf+hZqPC/Lwum6fI0POz3A8eHqNJMQBk1RmppVLC4oVaO7KTVPeix3P0c
+# 2PR3WlxUjG/voVA9/HYJaISfb8rbII01YBwCA8sgsKxYoA5AY8WYIsGyWfVVa88n
+# q2x2zm8jLfR+cWojayL/ErhULSd+2DrZ8LaHlv1b0VysGMNNn3O3AamfV6peKOK5
+# lDCCBq4wggSWoAMCAQICEAc2N7ckVHzYR6z9KGYqXlswDQYJKoZIhvcNAQELBQAw
+# YjELMAkGA1UEBhMCVVMxFTATBgNVBAoTDERpZ2lDZXJ0IEluYzEZMBcGA1UECxMQ
+# d3d3LmRpZ2ljZXJ0LmNvbTEhMB8GA1UEAxMYRGlnaUNlcnQgVHJ1c3RlZCBSb290
+# IEc0MB4XDTIyMDMyMzAwMDAwMFoXDTM3MDMyMjIzNTk1OVowYzELMAkGA1UEBhMC
+# VVMxFzAVBgNVBAoTDkRpZ2lDZXJ0LCBJbmMuMTswOQYDVQQDEzJEaWdpQ2VydCBU
+# cnVzdGVkIEc0IFJTQTQwOTYgU0hBMjU2IFRpbWVTdGFtcGluZyBDQTCCAiIwDQYJ
+# KoZIhvcNAQEBBQADggIPADCCAgoCggIBAMaGNQZJs8E9cklRVcclA8TykTepl1Gh
+# 1tKD0Z5Mom2gsMyD+Vr2EaFEFUJfpIjzaPp985yJC3+dH54PMx9QEwsmc5Zt+Feo
+# An39Q7SE2hHxc7Gz7iuAhIoiGN/r2j3EF3+rGSs+QtxnjupRPfDWVtTnKC3r07G1
+# decfBmWNlCnT2exp39mQh0YAe9tEQYncfGpXevA3eZ9drMvohGS0UvJ2R/dhgxnd
+# X7RUCyFobjchu0CsX7LeSn3O9TkSZ+8OpWNs5KbFHc02DVzV5huowWR0QKfAcsW6
+# Th+xtVhNef7Xj3OTrCw54qVI1vCwMROpVymWJy71h6aPTnYVVSZwmCZ/oBpHIEPj
+# Q2OAe3VuJyWQmDo4EbP29p7mO1vsgd4iFNmCKseSv6De4z6ic/rnH1pslPJSlREr
+# WHRAKKtzQ87fSqEcazjFKfPKqpZzQmiftkaznTqj1QPgv/CiPMpC3BhIfxQ0z9JM
+# q++bPf4OuGQq+nUoJEHtQr8FnGZJUlD0UfM2SU2LINIsVzV5K6jzRWC8I41Y99xh
+# 3pP+OcD5sjClTNfpmEpYPtMDiP6zj9NeS3YSUZPJjAw7W4oiqMEmCPkUEBIDfV8j
+# u2TjY+Cm4T72wnSyPx4JduyrXUZ14mCjWAkBKAAOhFTuzuldyF4wEr1GnrXTdrnS
+# DmuZDNIztM2xAgMBAAGjggFdMIIBWTASBgNVHRMBAf8ECDAGAQH/AgEAMB0GA1Ud
+# DgQWBBS6FtltTYUvcyl2mi91jGogj57IbzAfBgNVHSMEGDAWgBTs1+OC0nFdZEzf
+# Lmc/57qYrhwPTzAOBgNVHQ8BAf8EBAMCAYYwEwYDVR0lBAwwCgYIKwYBBQUHAwgw
+# dwYIKwYBBQUHAQEEazBpMCQGCCsGAQUFBzABhhhodHRwOi8vb2NzcC5kaWdpY2Vy
+# dC5jb20wQQYIKwYBBQUHMAKGNWh0dHA6Ly9jYWNlcnRzLmRpZ2ljZXJ0LmNvbS9E
+# aWdpQ2VydFRydXN0ZWRSb290RzQuY3J0MEMGA1UdHwQ8MDowOKA2oDSGMmh0dHA6
+# Ly9jcmwzLmRpZ2ljZXJ0LmNvbS9EaWdpQ2VydFRydXN0ZWRSb290RzQuY3JsMCAG
+# A1UdIAQZMBcwCAYGZ4EMAQQCMAsGCWCGSAGG/WwHATANBgkqhkiG9w0BAQsFAAOC
+# AgEAfVmOwJO2b5ipRCIBfmbW2CFC4bAYLhBNE88wU86/GPvHUF3iSyn7cIoNqilp
+# /GnBzx0H6T5gyNgL5Vxb122H+oQgJTQxZ822EpZvxFBMYh0MCIKoFr2pVs8Vc40B
+# IiXOlWk/R3f7cnQU1/+rT4osequFzUNf7WC2qk+RZp4snuCKrOX9jLxkJodskr2d
+# fNBwCnzvqLx1T7pa96kQsl3p/yhUifDVinF2ZdrM8HKjI/rAJ4JErpknG6skHibB
+# t94q6/aesXmZgaNWhqsKRcnfxI2g55j7+6adcq/Ex8HBanHZxhOACcS2n82HhyS7
+# T6NJuXdmkfFynOlLAlKnN36TU6w7HQhJD5TNOXrd/yVjmScsPT9rp/Fmw0HNT7ZA
+# myEhQNC3EyTN3B14OuSereU0cZLXJmvkOHOrpgFPvT87eK1MrfvElXvtCl8zOYdB
+# eHo46Zzh3SP9HSjTx/no8Zhf+yvYfvJGnXUsHicsJttvFXseGYs2uJPU5vIXmVnK
+# cPA3v5gA3yAWTyf7YGcWoWa63VXAOimGsJigK+2VQbc61RWYMbRiCQ8KvYHZE/6/
+# pNHzV9m8BPqC3jLfBInwAM1dwvnQI38AC+R2AibZ8GV2QqYphwlHK+Z/GqSFD/yY
+# lvZVVCsfgPrA8g4r5db7qS9EFUrnEw4d2zc4GqEr9u3WfPwwggbGMIIErqADAgEC
+# AhAKekqInsmZQpAGYzhNhpedMA0GCSqGSIb3DQEBCwUAMGMxCzAJBgNVBAYTAlVT
+# MRcwFQYDVQQKEw5EaWdpQ2VydCwgSW5jLjE7MDkGA1UEAxMyRGlnaUNlcnQgVHJ1
+# c3RlZCBHNCBSU0E0MDk2IFNIQTI1NiBUaW1lU3RhbXBpbmcgQ0EwHhcNMjIwMzI5
+# MDAwMDAwWhcNMzMwMzE0MjM1OTU5WjBMMQswCQYDVQQGEwJVUzEXMBUGA1UEChMO
+# RGlnaUNlcnQsIEluYy4xJDAiBgNVBAMTG0RpZ2lDZXJ0IFRpbWVzdGFtcCAyMDIy
+# IC0gMjCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBALkqliOmXLxf1knw
+# FYIY9DPuzFxs4+AlLtIx5DxArvurxON4XX5cNur1JY1Do4HrOGP5PIhp3jzSMFEN
+# MQe6Rm7po0tI6IlBfw2y1vmE8Zg+C78KhBJxbKFiJgHTzsNs/aw7ftwqHKm9MMYW
+# 2Nq867Lxg9GfzQnFuUFqRUIjQVr4YNNlLD5+Xr2Wp/D8sfT0KM9CeR87x5MHaGjl
+# RDRSXw9Q3tRZLER0wDJHGVvimC6P0Mo//8ZnzzyTlU6E6XYYmJkRFMUrDKAz200k
+# heiClOEvA+5/hQLJhuHVGBS3BEXz4Di9or16cZjsFef9LuzSmwCKrB2NO4Bo/tBZ
+# mCbO4O2ufyguwp7gC0vICNEyu4P6IzzZ/9KMu/dDI9/nw1oFYn5wLOUrsj1j6siu
+# gSBrQ4nIfl+wGt0ZvZ90QQqvuY4J03ShL7BUdsGQT5TshmH/2xEvkgMwzjC3iw9d
+# RLNDHSNQzZHXL537/M2xwafEDsTvQD4ZOgLUMalpoEn5deGb6GjkagyP6+SxIXuG
+# Z1h+fx/oK+QUshbWgaHK2jCQa+5vdcCwNiayCDv/vb5/bBMY38ZtpHlJrYt/YYcF
+# aPfUcONCleieu5tLsuK2QT3nr6caKMmtYbCgQRgZTu1Hm2GV7T4LYVrqPnqYklHN
+# P8lE54CLKUJy93my3YTqJ+7+fXprAgMBAAGjggGLMIIBhzAOBgNVHQ8BAf8EBAMC
+# B4AwDAYDVR0TAQH/BAIwADAWBgNVHSUBAf8EDDAKBggrBgEFBQcDCDAgBgNVHSAE
+# GTAXMAgGBmeBDAEEAjALBglghkgBhv1sBwEwHwYDVR0jBBgwFoAUuhbZbU2FL3Mp
+# dpovdYxqII+eyG8wHQYDVR0OBBYEFI1kt4kh/lZYRIRhp+pvHDaP3a8NMFoGA1Ud
+# HwRTMFEwT6BNoEuGSWh0dHA6Ly9jcmwzLmRpZ2ljZXJ0LmNvbS9EaWdpQ2VydFRy
+# dXN0ZWRHNFJTQTQwOTZTSEEyNTZUaW1lU3RhbXBpbmdDQS5jcmwwgZAGCCsGAQUF
+# BwEBBIGDMIGAMCQGCCsGAQUFBzABhhhodHRwOi8vb2NzcC5kaWdpY2VydC5jb20w
+# WAYIKwYBBQUHMAKGTGh0dHA6Ly9jYWNlcnRzLmRpZ2ljZXJ0LmNvbS9EaWdpQ2Vy
+# dFRydXN0ZWRHNFJTQTQwOTZTSEEyNTZUaW1lU3RhbXBpbmdDQS5jcnQwDQYJKoZI
+# hvcNAQELBQADggIBAA0tI3Sm0fX46kuZPwHk9gzkrxad2bOMl4IpnENvAS2rOLVw
+# Eb+EGYs/XeWGT76TOt4qOVo5TtiEWaW8G5iq6Gzv0UhpGThbz4k5HXBw2U7fIyJs
+# 1d/2WcuhwupMdsqh3KErlribVakaa33R9QIJT4LWpXOIxJiA3+5JlbezzMWn7g7h
+# 7x44ip/vEckxSli23zh8y/pc9+RTv24KfH7X3pjVKWWJD6KcwGX0ASJlx+pedKZb
+# NZJQfPQXpodkTz5GiRZjIGvL8nvQNeNKcEiptucdYL0EIhUlcAZyqUQ7aUcR0+7p
+# x6A+TxC5MDbk86ppCaiLfmSiZZQR+24y8fW7OK3NwJMR1TJ4Sks3KkzzXNy2hcC7
+# cDBVeNaY/lRtf3GpSBp43UZ3Lht6wDOK+EoojBKoc88t+dMj8p4Z4A2UKKDr2xpR
+# oJWCjihrpM6ddt6pc6pIallDrl/q+A8GQp3fBmiW/iqgdFtjZt5rLLh4qk1wbfAs
+# 8QcVfjW05rUMopml1xVrNQ6F1uAszOAMJLh8UgsemXzvyMjFjFhpr6s94c/MfRWu
+# FL+Kcd/Kl7HYR+ocheBFThIcFClYzG/Tf8u+wQ5KbyCcrtlzMlkI5y2SoRoR/jKY
+# pl0rl+CL05zMbbUNrkdjOEcXW28T2moQbh9Jt0RbtAgKh1pZBHYRoad3AhMcMYIE
+# 9DCCBPACAQEwLzAbMRkwFwYDVQQDDBBES1NjcmlwdFNlbGZDZXJ0AhBsF6OnzZ1w
+# t0cjkBXLKrLHMAkGBSsOAwIaBQCgeDAYBgorBgEEAYI3AgEMMQowCKACgAChAoAA
+# MBkGCSqGSIb3DQEJAzEMBgorBgEEAYI3AgEEMBwGCisGAQQBgjcCAQsxDjAMBgor
+# BgEEAYI3AgEVMCMGCSqGSIb3DQEJBDEWBBSKG7DwrX21ECIU6/345cP86w5apDAN
+# BgkqhkiG9w0BAQEFAASCAQB4TTLHRS3zsUvD84PWvqX8GYhg35vO8HyerjN9Mv4G
+# F1hF7RqHAGmYAjCyfqf+BTxbrfFaxh24EjVMgWVfKO/FhH8VEVHhstUAjbZECH42
+# ecoqOWs3qbG9gxAONCjQ6gTPWQ74+sRaqvs+t2PTFGYhRN8+bsYXC91DjXcPp1pd
+# g9bNzUKM/0NYWCL1ad7nMgoggBglkirfVRxZgLdacziNPGk67x18Xnv+kYiqeWO1
+# U+gmr5x04w7M+Gb/1MDsjAaL6CfdEftCI8/5Rtp6IRaBCs0r18fZ/Lrcw7CEUzdA
+# eyU4AhBlXHUPs4FQIhbMwtiBJqTk2Y6jPmKitJLBo5GjoYIDIDCCAxwGCSqGSIb3
+# DQEJBjGCAw0wggMJAgEBMHcwYzELMAkGA1UEBhMCVVMxFzAVBgNVBAoTDkRpZ2lD
+# ZXJ0LCBJbmMuMTswOQYDVQQDEzJEaWdpQ2VydCBUcnVzdGVkIEc0IFJTQTQwOTYg
+# U0hBMjU2IFRpbWVTdGFtcGluZyBDQQIQCnpKiJ7JmUKQBmM4TYaXnTANBglghkgB
+# ZQMEAgEFAKBpMBgGCSqGSIb3DQEJAzELBgkqhkiG9w0BBwEwHAYJKoZIhvcNAQkF
+# MQ8XDTIyMDkwODE1MzEzMFowLwYJKoZIhvcNAQkEMSIEIDf6RCAPs1+8Zcun2Jio
+# w+zPQI+GAnbfDdGRdwQdEwXEMA0GCSqGSIb3DQEBAQUABIICAKcOjiJc/IK2XaRM
+# VF/TXmaAKULRe2lWhTwd6Hfde4DhdbOWgmRv0yqgfZsDG/QOKpRJSplEWIDOrfdP
+# 72Wf3wXnr8Eqi+F7CtdnG5F2+G5/E/fWIEIqTJBF9cdbmctsltE30IPPrI0CGmEO
+# dPbyCYC8J0MK1qxYdrA6Wf0fGUGJJLWbP7PEDEOlQQtGrB8OGEsOPwctiM5seguX
+# zNvD0/vSTTP8rdPG1ZmhhEdsglmfdhzvjR2pN9x3Kab5MBPrCo5HZYCEan/40ZZR
+# NHmdQa1JPwGqG3Cu5WQmWi0iQdX92NZD8J8ZLJr8Rhodq/1wHsHtdBSUbJ6FRnoS
+# 4IbOR14AbZzomWK13Y3Xd4J8pszjP6IA8VkLf6kHnAhYZOrlwKHZL3SMBrhbZ3Jj
+# oneklTseD2BWKXjalj0oYbBMaazLydgFZ0nyo8kTqcUu8sFWxkxgBOt7sIj/wOj1
+# 1wVM6qCWmkRN0r/Kf1qon/Em1W63Y5Ptlz0f2oIRnbagxvjQRDHFwglBA/vmEQN+
+# 6bA6MYVblGTvxBVxIyarXKshBdSXtJLVLxOnleSsUrJVu7zWFCe/v1RQhaOBMl9m
+# F9CmH9sNWSqI8jzD9jJR6BnsXVqSRgbgcrbUgdItZ4TGaz4IY4xpJpJgebSTzPvZ
+# lpRDenwMBLqvfNOw5CYb1LGo3w6S
 # SIG # End signature block
