@@ -108,7 +108,7 @@ EventResult InputEventHandler::ProcessEvent(RE::InputEvent* const* a_event, RE::
 		return EventResult::kContinue;
 
 	const auto ui = RE::UI::GetSingleton();
-	if (ui->GameIsPaused()) {
+	if (ui->GameIsPaused() || ui->IsMenuOpen()) {
 		return EventResult::kContinue;
 	}
 
