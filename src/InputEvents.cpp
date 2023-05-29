@@ -111,6 +111,10 @@ EventResult InputEventHandler::ProcessEvent(RE::InputEvent* const* a_event, RE::
 	if (ui->GameIsPaused()) {
 		return EventResult::kContinue;
 	}
+	
+	const auto ctrlMap = RE::ControlMap::GetSingleton();
+	if (!ctrlMap || ctrlMap->contextPriorityStack.back() != RE::UserEvents::INPUT_CONTEXT_ID::kGameplay)
+		return EventResult::kContinue;
 
 	for (auto event = *a_event; event; event = event->next) {
 		if (event->eventType != EventType::kButton)
